@@ -1,0 +1,82 @@
+﻿Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+[companions-test] starting (headless)
+[companions-test] ok: spawned 4 allies (got 4)
+[companions-test] ok: spawned 3 Driftling pets (got 3)
+[companions-test] ok: AllyAgent is in group 'allies'
+[companions-test] ok: PetAgent is in group 'pets'
+[companions-test] ok: ally collision_layer == 8 (Friendly)
+[companions-test] ok: ally collision_mask == 1 (World)
+[companions-test] ok: ally Health team is 'friendly'
+[companions-test] ok: ally body exposes health_component meta
+[companions-test] ok: rank 2 medic has rank-scaled health (134)
+[companions-test] ok: ally visual is built from low-poly primitives (34 meshes)
+[companions-test] ok: Driftling visual is built from primitives (24 meshes)
+[companions-test] ok: get_ally_data() returns AllyData
+[companions-test] ok: medic role resolved
+[companions-test] ok: engineer role resolved
+[companions-test] ok: pets are in group 'friendly'
+[companions-test] ok: ally starts standing (not downed)
+[companions-test] ok: TestAlly_mara_voss has a HealthComponent
+[companions-test] ok: TestAlly_rook has a HealthComponent
+[companions-test] ok: TestAlly_irie_sol has a HealthComponent
+[companions-test] ok: TestAlly_toma_nix has a HealthComponent
+[companions-test] ok: TestPet_mote has an optional HealthComponent
+[companions-test] ok: TestPet_cinder has an optional HealthComponent
+[companions-test] ok: TestPet_pip has an optional HealthComponent
+[companions-test] ok: player relocated for follow test
+[companions-test] ok: teleport catch-up armed
+[companions-test] ok: TestAlly_mara_voss caught up to player (2.8m)
+[companions-test] ok: TestAlly_rook caught up to player (2.8m)
+[companions-test] ok: TestAlly_irie_sol caught up to player (2.8m)
+[companions-test] ok: TestAlly_toma_nix caught up to player (2.8m)
+[companions-test] ok: issue_command(&'hold') acknowledged
+[companions-test] ok: held Warden stays near hold position (0.6m drift)
+[companions-test] ok: issue_command(&'follow') acknowledged
+[companions-test] ok: issue_command(&'focus') acknowledged
+[companions-test] ok: focused scout closes to preferred range (73.1m -> 66.6m)
+[companions-test] ok: medic force_ability() executed
+[companions-test] ok: medic restored player health/shield (178/0 -> 200/30)
+[companions-test] ok: heavy force_ability() executed
+[companions-test] ok: heavy applied an armour buff to the player
+[companions-test] ok: heavy taunted nearby enemies (hear_noise)
+[companions-test] ok: scout force_ability() executed
+[companions-test] ok: scout marked an enemy with set_marked()
+[companions-test] ok: engineer force_ability() executed
+[companions-test] ok: engineer deployed a ShockTurret (0 -> 1)
+[companions-test] ok: shock turret damaged an enemy (255 -> 77)
+[companions-test] ok: cinder force_ability() executed
+[companions-test] ok: cinder bolt damaged an enemy (77 -> 47)
+[companions-test] ok: pip force_ability() executed
+[companions-test] ok: pip scan marked a nearby enemy
+[companions-test] ok: mote force_ability() executed
+[companions-test] ok: mote restored player shield (0 -> 35)
+[companions-test] ok: lethal damage downs the Warden
+[companions-test] ok: downed Warden offers 'Revive <name>' prompt (got 'Revive Toma Nix')
+[companions-test] ok: downed Warden joins group 'interactable'
+[companions-test] ok: downed Warden exposes Interactable collision layer for the player's E ray
+[companions-test] ok: interact(player) revives the Warden
+[companions-test] ok: revived Warden has health restored
+[companions-test] ok: revived Warden clears its interact prompt
+[companions-test] ok: revived Warden leaves group 'interactable'
+[companions-test] ok: Warden auto-revived a downed player (1 calls)
+[companions-test] ok: player is no longer downed after squad revive
+[companions-test] ok: player health restored after squad revive
+[companions-test] ok: Driftling can take damage
+[companions-test] ok: Driftling heal() repairs damage
+[companions-test] ok: Driftling can be temporarily disabled
+[companions-test] ok: Driftling self-repairs after being disabled
+[companions-test] ok: self-repair restores Driftling health
+[companions-test] ok: Driftling supports Ghost Protocol cloak
+[companions-test] ok: Driftling decloaks after the duration
+[companions-test] ok: TestPet_mote exposes HUD status
+[companions-test] ok: TestPet_cinder exposes HUD status
+[companions-test] ok: TestPet_pip exposes HUD status
+[companions-test] ok: CompanionManager spawns 2 active Wardens (got 2)
+[companions-test] ok: CompanionManager spawns the active Driftling
+[companions-test] ok: CompanionManager joins group 'companion_manager'
+[companions-test] ok: squad status exposes 2 Wardens + 1 pet (got 3)
+[companions-test] ok: squad status marks ally/pet kinds
+[companions-test] ok: issue_squad_command(&'hold') reaches every Warden (2/2)
+[companions-test] ok: CompanionManager.get_ally() resolves a Warden
+[companions-test] PASS — 78 checks

@@ -1,0 +1,127 @@
+name: headless-tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: "4.7.2"
+
+jobs:
+  suites:
+    name: Headless suites (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the Godot binary
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
+
+      - name: Install Godot ${{ env.GODOT_VERSION }}
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/godot"
+          url="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -fsSL -o /tmp/godot.zip "$url"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          install -m 755 "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
+
+      - name: Add Godot to PATH
+        shell: bash
+        run: echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+
+      - name: Import the project (builds .godot/)
+        shell: bash
+        run: godot --headless --path . --import || true
+
+      - name: Boot — no script errors
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --quit-after 240 2>&1 | tee boot.log
+          ! grep -q "SCRIPT ERROR" boot.log
+
+      - name: Integration suite (73 checks)
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --quit-after 4000 res://tests/integration_test.tscn 2>&1 | tee integration.log
+          grep -q "RESULT: PASS" integration.log
+
+      - name: Death and downed suite (9 checks)
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --quit-after 4000 res://tests/death_test.tscn 2>&1 | tee death.log
+          grep -q "RESULT: PASS" death.log
+
+      - name: Progression and content suite (143 checks)
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --script res://tests/progression_test.gd 2>&1 | tee progression.log
+          grep -q "RESULT: PASS" progression.log
+
+      - name: World generation suite
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --quit-after 4000 res://features/world/world_test.tscn 2>&1 | tee world.log
+          grep -q "PASS" world.log
+
+      - name: Enemy AI suite (134 checks)
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --script res://features/ai/ai_test.gd 2>&1 | tee ai.log
+          grep -q "PASS" ai.log
+
+      - name: Companion suite (78 checks)
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --script res://features/companions/companions_test.gd 2>&1 | tee companions.log
+          grep -q "PASS" companions.log
+
+      - name: UI harness (47 checks)
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --quit-after 2400 res://ui/ui_demo.tscn 2>&1 | tee ui.log
+          grep -q "RESULT: PASS" ui.log
+
+      - name: Shooting smoke (weapon slots, abilities, reload)
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --quit-after 4000 -- --shoot-smoke 2>&1 | tee shoot.log
+          grep -q "RESULT: PASS" shoot.log
+
+      - name: Inventory smoke (paused overlay, satchel)
+        shell: bash
+        run: |
+          set -o pipefail
+          godot --headless --path . --quit-after 4000 -- --inventory-smoke 2>&1 | tee inventory.log
+          grep -q "RESULT: PASS" inventory.log
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-logs
+          path: "*.log"
+          if-no-files-found: ignore

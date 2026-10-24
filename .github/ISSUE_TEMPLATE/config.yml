@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/r48n34/riftward/security/advisories/new
+    about: Please report security problems privately, not as a public issue.
+  - name: Play the game / release downloads
+    url: https://r48n34.itch.io/riftward
+    about: For "how do I play" and installation questions, see the itch.io page.

@@ -1,0 +1,71 @@
+name: Feature request
+description: Suggest a gameplay, content or tooling improvement.
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please keep suggestions compatible with the project's fixed scope: **single-player, offline,
+        no co-op, no PvP, no monetisation**. Requests for multiplayer are declined on architecture
+        grounds, not for lack of interest — see `docs/WEB_PORT.md` and `docs/BUILD_PLAN.md`.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the player experience, not the implementation.
+      placeholder: "Once a run passes 15 minutes, the last two minutes are a straight sprint to an exfil pad with nothing to decide."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What else could solve the same problem, including "do nothing"?
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Combat / weapons
+        - Enemies / AI
+        - World / procedural generation
+        - Run loop / objectives / exfiltration
+        - Progression / gear / perks
+        - Wardens / pets
+        - Outpost / base building
+        - UI / HUD / accessibility
+        - Audio
+        - Tooling / build / docs
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backlog
+    attributes:
+      label: Is this already in the backlog?
+      description: Check docs/BUILD_PLAN.md → Future backlog.
+      options:
+        - "No, it is new"
+        - "Yes, and I am adding detail to it"
+        - "Not sure"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and the backlog.
+          required: true
+        - label: This fits the single-player, offline scope.
+          required: true

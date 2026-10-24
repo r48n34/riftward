@@ -1,0 +1,85 @@
+name: export-windows
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: "4.7.2"
+
+jobs:
+  export:
+    name: Export and package (Windows x86_64)
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot ${{ env.GODOT_VERSION }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $dir = Join-Path $env:RUNNER_TEMP "godot"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $url = "https://github.com/godotengine/godot/releases/download/${env:GODOT_VERSION}-stable/Godot_v${env:GODOT_VERSION}-stable_win64.exe.zip"
+          Invoke-WebRequest -Uri $url -OutFile "$env:RUNNER_TEMP\godot.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\godot.zip" -DestinationPath $dir -Force
+          "GODOT_BIN=$dir" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Install export templates
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = "${env:GODOT_VERSION}.stable"
+          $dest = Join-Path $env:APPDATA "Godot\export_templates\$version"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+
+          $tpz = Join-Path $env:RUNNER_TEMP "templates.tpz"
+          $url = "https://github.com/godotengine/godot/releases/download/${env:GODOT_VERSION}-stable/Godot_v${env:GODOT_VERSION}-stable_export_templates.tpz"
+          Invoke-WebRequest -Uri $url -OutFile $tpz
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($tpz)
+          try {
+            $wanted = $zip.Entries | Where-Object {
+              $_.Name -match '^(windows_(debug|release)_x86_64(_console)?\.exe|version\.txt)$'
+            }
+            foreach ($entry in $wanted) {
+              [System.IO.Compression.ZipFileExtensions]::ExtractToFile(
+                $entry, (Join-Path $dest $entry.Name), $true)
+              Write-Host "extracted $($entry.Name)"
+            }
+          } finally {
+            $zip.Dispose()
+          }
+          Get-ChildItem $dest | Select-Object Name, Length
+
+      - name: Export and package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          pwsh -NoProfile -ExecutionPolicy Bypass -File tools/build_export.ps1 -Zip
+          if ($LASTEXITCODE -ne 0) { throw "Export failed with exit code $LASTEXITCODE" }
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RIFTWARD-windows-x86_64
+          path: release/
+          if-no-files-found: error
+
+      - name: Attach build to the GitHub release
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ github.event.release.tag_name }}" \
+            release/RIFTWARD-win64.zip \
+            release/SHA256SUMS.txt \
+            --clobber

@@ -1,0 +1,29 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Local QA and build output
+*.log
+_*.log
+tests/artifacts/logs/
+ui/_boot.log
+ui/_import.log
+/build/
+/.build/
+/release/
+
+# OS and editor junk
+Thumbs.db
+desktop.ini
+.DS_Store
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Local scratch
+*.tmp
+*.bak
+*.orig
+*.rej

@@ -1,0 +1,99 @@
+name: Bug report
+description: Something in the game is broken or behaves unexpectedly.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please search existing issues first — this game has a lot of systems and
+        some behaviour is intentional (no co-op, no mid-run save). The README's *Status and known limits*
+        section covers a few of those.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: "Release version (0.1.0), or the commit hash if you built from source."
+      placeholder: "0.1.0 / a1b2c3d"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build
+    attributes:
+      label: Which build are you running?
+      options:
+        - Downloaded release (Windows)
+        - Built from source
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Be specific. Include the contract, map and seed if it happens during a deployment.
+      placeholder: |
+        1. Launch, click Quick Deploy
+        2. Choose Breach / Glass Expanse
+        3. Fire the arc rifle while sliding
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include a screenshot or clip if the problem is visual.
+    validations:
+      required: true
+
+  - type: input
+    id: run
+    attributes:
+      label: Run details (if in a deployment)
+      description: Seed, contract and difficulty, if you know them. The seed is shown on the results screen.
+      placeholder: "seed 12345, salvage_sweep, Contact / Ashen Shelf"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Last ~40 lines of `%APPDATA%\Godot\app_userdata\RIFTWARD\logs\godot.log`.
+        Paste inside the code fences.
+      render: text
+      placeholder: |
+        ```
+        Godot Engine v4.7.2.stable.official
+        ...
+        ```
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: GPU and driver version matter here — the game renders with DirectX 12.
+      placeholder: "RTX 3060, driver 566.36, Windows 11 23H2"
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am on the latest release or the latest `main`.
+          required: true
+        - label: This is not a security issue (those go through SECURITY.md).
+          required: true
