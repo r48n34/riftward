@@ -143,6 +143,19 @@ If you redistribute a build, GPL-3.0 requires the corresponding source; link bac
 
 ## Credits
 
-Created with **Godot 4.7.2** (Forward+, Jolt Physics, D3D12). All geometry, materials, effects and audio
-are generated procedurally — no external models, textures or paid assets. Screenshots and promo art are
-composed from live in-engine captures.
+All geometry, materials, effects and audio are generated procedurally — no external models, textures or
+paid assets. Screenshots and promo art are composed from live in-engine captures.
+
+## Built with
+
+This game was built heavily with AI assistance:
+
+- **DeepSeek Harness** — the agentic development environment used to write, test, review and package the
+  project.
+- **DeepSeek V4.1 Flash** — the model behind that work: gameplay systems, UI, procedural content, tooling
+  and documentation.
+- **Godot 4.7.2** — engine, Forward+ renderer, Jolt physics and the Windows export pipeline.
+
+Design direction and final judgement were human; the implementation, test suites and documentation were
+produced in that collaboration. The same disclosure appears on the
+[itch.io page](https://r48n34.itch.io/riftward).
