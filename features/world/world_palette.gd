@@ -1,4 +1,4 @@
-﻿extends RefCounted
+extends RefCounted
 ## WORLD PALETTE ??single source of truth for RIFTWARD's frontier look.
 ##
 ## Pure data + math helpers. Safe to call from worker threads (no scene tree,
@@ -42,6 +42,8 @@ const GLASS_CRACK := Color(0.30, 0.35, 0.38)
 const PATH_COLOR := Color(0.62, 0.53, 0.40)
 const PAD_COLOR := Color(0.72, 0.68, 0.57)
 const BORDER_COLOR := Color(0.38, 0.31, 0.26)
+const FLUID_WATER_MAP := Color(0.16, 0.42, 0.54)
+const FLUID_LAVA_MAP := Color(0.86, 0.26, 0.08)
 
 # --- Built structures --------------------------------------------------------
 const MAT_IVORY := Color(0.80, 0.76, 0.67)
@@ -87,6 +89,29 @@ static func biome_name(index: int) -> String:
 	return BIOME_NAMES[index]
 
 
+## Planet-aware biome name (a planet remaps the three biome identities).
+static func biome_name_for(planet: Dictionary, index: int) -> String:
+	var names: Array = planet.get("biome_names", []) if planet is Dictionary else []
+	if index >= 0 and index < names.size():
+		return String(names[index])
+	return biome_name(index)
+
+
+## Applies a planet's per-biome tint to an already-computed terrain color.
+## `palette` is {tint: Array[Color] (3), strength: float}; empty = no change.
+static func apply_planet_tint(col: Color, weights: Vector3, palette: Dictionary) -> Color:
+	if palette.is_empty():
+		return col
+	var tints: Array = palette.get("tint", [])
+	if tints.size() < 3:
+		return col
+	var strength := clampf(float(palette.get("strength", 0.0)), 0.0, 0.85)
+	if strength <= 0.0:
+		return col
+	var tint: Color = (tints[0] as Color) * weights.x + (tints[1] as Color) * weights.y + (tints[2] as Color) * weights.z
+	return col.lerp(col * tint, strength)
+
+
 # -----------------------------------------------------------------------------
 # Terrain color functions. `detail_a`/`detail_b`/`macro` are precomputed noise
 # fields in [-1, 1]; `slope` is 0 (flat) .. 1 (vertical).
@@ -130,7 +155,7 @@ static func glass_color(height: float, slope: float, detail_a: float, detail_b: 
 
 
 ## Blended terrain color. `weights` is (verdant, ashen, glass) summing to ~1.
-static func blend_terrain_color(weights: Vector3, height: float, slope: float, detail_a: float, detail_b: float, macro: float) -> Color:
+static func blend_terrain_color(weights: Vector3, height: float, slope: float, detail_a: float, detail_b: float, macro: float, palette: Dictionary = {}) -> Color:
 	var out := Color(0.0, 0.0, 0.0)
 	if weights.x > 0.004:
 		out += verdant_color(height, slope, detail_a, detail_b, macro) * weights.x
@@ -138,12 +163,12 @@ static func blend_terrain_color(weights: Vector3, height: float, slope: float, d
 		out += ashen_color(height, slope, detail_a, detail_b, macro) * weights.y
 	if weights.z > 0.004:
 		out += glass_color(height, slope, detail_a, detail_b, macro) * weights.z
-	return out
+	return apply_planet_tint(out, weights, palette)
 
 
 ## Cheap topographical map color (UI map). Includes a sun-hillshade term.
-static func map_color(weights: Vector3, height: float, slope: float, detail_a: float, detail_b: float, macro: float, path_w: float, shade: float, border: float) -> Color:
-	var col := blend_terrain_color(weights, height, slope, detail_a, detail_b, macro)
+static func map_color(weights: Vector3, height: float, slope: float, detail_a: float, detail_b: float, macro: float, path_w: float, shade: float, border: float, palette: Dictionary = {}) -> Color:
+	var col := blend_terrain_color(weights, height, slope, detail_a, detail_b, macro, palette)
 	# Reading paths on the tactical map matters more than terrain fidelity.
 	col = col.lerp(PATH_COLOR, clampf(path_w, 0.0, 1.0) * 0.78)
 	# Hillshade (0.0 shadow .. 1.0 lit).

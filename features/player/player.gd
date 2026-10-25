@@ -78,6 +78,13 @@ var _was_down: bool = false
 var _locked_notice_time: float = -100.0
 var _locked_notice_id: StringName = &""
 var _exfil_notice_time: float = -100.0
+var _world_node: Node = null
+var _fluid_type: int = 0
+var _fluid_level: float = 0.0
+var _fluid_move_mult: float = 1.0
+var _hazard_tick: float = 0.0
+var _headlamp: OmniLight3D = null
+var _lamp_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -89,6 +96,7 @@ func _ready() -> void:
 	_build_abilities()
 	_connect_settings()
 	_apply_profile_cosmetics()
+	_cache_world()
 	_record_history()
 	if DisplayServer.get_name() != "headless":
 		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
@@ -124,6 +132,17 @@ func _build_body() -> void:
 	camera.current = true
 	camera_pivot.add_child(camera)
 	base_fov = camera.fov
+	# A small night headlamp keeps the frontier readable after dusk without
+	# flattening the day/night contrast.
+	_headlamp = OmniLight3D.new()
+	_headlamp.name = "Headlamp"
+	_headlamp.light_color = Color(0.72, 0.82, 1.0)
+	_headlamp.light_energy = 0.0
+	_headlamp.omni_range = 20.0
+	_headlamp.omni_attenuation = 1.4
+	_headlamp.shadow_enabled = false
+	_headlamp.position = Vector3(0.0, 0.0, -0.15)
+	camera.add_child(_headlamp)
 	mouse_sensitivity = float(App.get_setting("mouse_sensitivity", 0.0022))
 	ads_sensitivity_scale = float(App.get_setting("ads_sensitivity_scale", 0.7))
 	invert_y = bool(App.get_setting("invert_y", false))
@@ -226,6 +245,8 @@ func _physics_process(delta: float) -> void:
 	if is_downed:
 		_update_downed(delta)
 		return
+	_update_fluid_state(delta)
+	_update_headlamp(delta)
 	_apply_gamepad_look(delta)
 	_update_timers(delta)
 	_update_movement(delta)
@@ -275,7 +296,7 @@ func _update_movement(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var direction := (transform.basis * Vector3(input.x, 0.0, input.y)).normalized()
 	var wants_sprint := Input.is_action_pressed("sprint") and input.y < 0.1 and not _crouching
-	_sprinting = wants_sprint and direction.length_squared() > 0.01 and is_on_floor()
+	_sprinting = wants_sprint and direction.length_squared() > 0.01 and is_on_floor() and _fluid_type == 0
 	var walk_speed := stats_component.get_stat(StatKeys.MOVE_SPEED, WALK_SPEED)
 	var sprint_speed := stats_component.get_stat(StatKeys.SPRINT_SPEED, SPRINT_SPEED)
 	var target_speed := walk_speed
@@ -310,6 +331,7 @@ func _update_movement(delta: float) -> void:
 			if _can_stand_up():
 				_crouching = false
 				_set_crouch_shape(false)
+	target_speed *= _fluid_move_mult
 	if not is_on_floor():
 		_coyote = 0.12
 	else:
@@ -318,17 +340,27 @@ func _update_movement(delta: float) -> void:
 		_jump_buffer = 0.12
 	else:
 		_jump_buffer = maxf(0.0, _jump_buffer - delta)
-	if _jump_buffer > 0.0 and (_coyote > 0.0 or is_on_floor()) and not _sliding:
+	if _jump_buffer > 0.0 and (_coyote > 0.0 or is_on_floor() or _fluid_type == 1) and not _sliding:
 		if _crouching and not _can_stand_up():
 			_jump_buffer = 0.0
 		else:
-			velocity.y = stats_component.get_stat(StatKeys.JUMP_VELOCITY, JUMP_VELOCITY)
+			if _fluid_type == 1:
+				velocity.y = 3.2
+			else:
+				velocity.y = stats_component.get_stat(StatKeys.JUMP_VELOCITY, JUMP_VELOCITY)
 			_jump_buffer = 0.0
 			_coyote = 0.0
 			_set_crouch_shape(false)
 			_crouching = false
 	if not is_on_floor():
-		velocity.y -= float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8)) * delta
+		var gravity := float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
+		if _fluid_type == 1:
+			velocity.y -= gravity * 0.25 * delta
+			if global_position.y < _fluid_level - 0.4:
+				velocity.y += 10.0 * delta
+			velocity.y = clampf(velocity.y, -3.5, 4.5)
+		else:
+			velocity.y -= gravity * delta
 	var horizontal := Vector3(velocity.x, 0.0, velocity.z)
 	var accel := ACCEL_GROUND if is_on_floor() else ACCEL_AIR
 	if direction.length_squared() > 0.01:
@@ -341,6 +373,87 @@ func _update_movement(delta: float) -> void:
 	if is_on_floor() and absf(velocity.y) < 0.2:
 		velocity.y = 0.0
 	_update_footsteps(delta)
+
+
+# ---------------------------------------------------------------------------
+# Fluid, hazard and night visibility
+# ---------------------------------------------------------------------------
+
+func _cache_world() -> void:
+	if _world_node == null or not is_instance_valid(_world_node):
+		_world_node = get_tree().get_first_node_in_group("world")
+
+
+## Analytic water/lava query against the world builder. Water grants buoyancy and
+## a swim speed; lava deals heat damage through the normal health pipeline.
+func _update_fluid_state(delta: float) -> void:
+	_cache_world()
+	_fluid_move_mult = 1.0
+	if _world_node == null or not _world_node.has_method("sample_fluid"):
+		_set_fluid_type(0, 0.0)
+		return
+	var fluid: Dictionary = _world_node.call("sample_fluid", Vector2(global_position.x, global_position.z))
+	var fluid_type := int(fluid.get("type", 0))
+	var level := float(fluid.get("level", 0.0))
+	if fluid_type == 0 or global_position.y >= level + 0.15:
+		_set_fluid_type(0, level)
+		_hazard_tick = 0.0
+		return
+	_set_fluid_type(fluid_type, level)
+	if fluid_type == 1:
+		var swim := clampf(get_stat(StatKeys.SWIM_SPEED, 1.0), 0.5, 2.0)
+		_fluid_move_mult = swim * 0.68
+	else:
+		_fluid_move_mult = 0.5
+		_hazard_tick -= delta
+		if _hazard_tick <= 0.0:
+			_hazard_tick = 0.5
+			var resist := clampf(get_stat(StatKeys.HAZARD_RESIST, 0.0), 0.0, 0.8)
+			take_fall_or_hazard_damage(9.0 * (1.0 - resist), self)
+			EventBus.notification_requested.emit("LAVA", "Get out of the lava.", &"danger")
+
+
+func _set_fluid_type(fluid_type: int, level: float) -> void:
+	_fluid_level = level
+	if fluid_type == _fluid_type:
+		return
+	_fluid_type = fluid_type
+	var state: StringName = &"none"
+	if fluid_type == 1:
+		state = &"water"
+	elif fluid_type == 2:
+		state = &"lava"
+	EventBus.hazard_state_changed.emit(state)
+
+
+func _update_headlamp(delta: float) -> void:
+	_lamp_timer -= delta
+	if _lamp_timer > 0.0:
+		return
+	_lamp_timer = 2.0
+	if _headlamp == null:
+		return
+	var cycle := get_tree().get_first_node_in_group("day_night")
+	var night := false
+	if cycle != null and cycle.has_method("is_night"):
+		night = bool(cycle.call("is_night"))
+	_headlamp.light_energy = 0.9 if night else 0.0
+
+
+func get_fluid_type() -> int:
+	return _fluid_type
+
+
+func is_in_fluid() -> bool:
+	return _fluid_type != 0
+
+
+func set_hazard_resist(value: float, duration: float) -> void:
+	apply_temporary_modifier(&"hazard_resist", StatKeys.HAZARD_RESIST, &"add", value, duration)
+
+
+func set_fluid_mobility(mult: float, duration: float) -> void:
+	apply_temporary_modifier(&"fluid_mobility", StatKeys.SWIM_SPEED, &"mult", mult, duration)
 
 
 func _set_crouch_shape(crouch: bool) -> void:

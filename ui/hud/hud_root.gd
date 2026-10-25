@@ -10,6 +10,8 @@ const UIHudMinimapScript := preload("res://ui/hud/hud_minimap.gd")
 const UIHudScopeScript := preload("res://ui/hud/hud_scope.gd")
 const UIHudAimSightScript := preload("res://ui/hud/hud_aim_sight.gd")
 const MINIMAP_SIZE := 216.0
+const WORLD_EVENT_HOLD := 7.0
+const WORLD_EVENT_MAX_QUEUE := 4
 
 var _player_ref: WeakRef = null
 var _bound_player: Node = null
@@ -44,6 +46,29 @@ var _mission_trackers: Array = []
 var _tracker_box: VBoxContainer = null
 var _tracker_divider: ColorRect = null
 var _tracker_rows: VBoxContainer = null
+var _world_chip: Control = null
+var _weather_icon: TextureRect = null
+var _weather_label: Label = null
+var _clock_label: Label = null
+var _dungeon_panel: PanelContainer = null
+var _dungeon_label: Label = null
+var _tutorial_panel: PanelContainer = null
+var _tutorial_title: Label = null
+var _tutorial_body: Label = null
+var _tutorial_hint: Label = null
+var _tutorial_bar: ProgressBar = null
+var _hazard_overlay: ColorRect = null
+var _hazard_label: Label = null
+var _hazard_state: StringName = &"none"
+
+# Reach Event banner (EventBus.world_event): compact, queued, auto-hiding.
+var _world_event_panel: PanelContainer = null
+var _world_event_icon: TextureRect = null
+var _world_event_title: Label = null
+var _world_event_body: Label = null
+var _world_event_queue: Array[Dictionary] = []
+var _world_event_active := false
+var _world_event_token := 0
 
 var _minimap: Control = null
 var _map_overlay: Control = null
@@ -151,11 +176,15 @@ func _build() -> void:
 	_anchored(_compass, Control.PRESET_CENTER_TOP, -240, 16, 240, 46)
 
 	_build_timer_panel()
+	_build_tutorial_panel()
+	_build_dungeon_panel()
+	_build_hazard_overlay()
 	_build_exfil_panel()
 	_build_boss_panel()
 	_build_objective_panel()
 	_build_squad_panel()
 	_build_notifications()
+	_build_world_event_banner()
 	_build_vitals()
 	_build_weapon()
 	_build_inventory_hint()
@@ -180,7 +209,7 @@ func _make_hud_panel(preset: int, left: float, top: float, right: float, bottom:
 
 
 func _build_timer_panel() -> void:
-	_timer_panel = _make_hud_panel(Control.PRESET_CENTER_TOP, -160, 52, 160, 100)
+	_timer_panel = _make_hud_panel(Control.PRESET_CENTER_TOP, -160, 52, 160, 118)
 	var box := UIFactory.vbox(1)
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	_timer_label = UIFactory.number_text("--:--", 26, UIPalette.ivory)
@@ -189,6 +218,18 @@ func _build_timer_panel() -> void:
 	_timer_caption = UIFactory.label("—", "Micro", UIPalette.muted)
 	_timer_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(_timer_caption)
+	# Weather + local clock live under the run timer so they never compete with
+	# the squad panel or the notification feed.
+	var world_row := UIFactory.hbox(6, BoxContainer.ALIGNMENT_CENTER)
+	_weather_icon = UIFactory.icon(&"weather-sun", 12, UIPalette.amber)
+	world_row.add_child(_weather_icon)
+	_weather_label = UIFactory.label("CLEAR", "Micro", UIPalette.ivory)
+	world_row.add_child(_weather_label)
+	world_row.add_child(UIFactory.label("·", "Micro", UIPalette.muted_dim))
+	_clock_label = UIFactory.label("--:--", "MonoSmall", UIPalette.muted)
+	world_row.add_child(_clock_label)
+	box.add_child(world_row)
+	_world_chip = world_row
 	_fps_label = UIFactory.label("", "Micro", UIPalette.muted_dim)
 	_fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_fps_label.visible = _show_fps
@@ -200,8 +241,125 @@ func _build_timer_panel() -> void:
 	_timer_panel.add_child(box)
 
 
+func _build_dungeon_panel() -> void:
+	_dungeon_panel = _make_hud_panel(Control.PRESET_CENTER_TOP, -250, 104, 250, 148)
+	_dungeon_label = UIFactory.label("UNDER-REACH", "Eyebrow", UIPalette.violet)
+	_dungeon_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_dungeon_panel.add_child(_dungeon_label)
+	_dungeon_panel.visible = false
+
+
+func _build_tutorial_panel() -> void:
+	_tutorial_panel = _make_hud_panel(Control.PRESET_CENTER_TOP, -280, 156, 280, 360)
+	var box := UIFactory.vbox(UIPalette.SP2)
+	_tutorial_title = UIFactory.label("FIELD TRAINING", "Eyebrow", UIPalette.mint)
+	box.add_child(_tutorial_title)
+	_tutorial_body = UIFactory.label("", "BodySmall", UIPalette.ivory)
+	_tutorial_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(_tutorial_body)
+	_tutorial_bar = UIFactory.progress(0.0, 100.0, "BarMint", 5)
+	box.add_child(_tutorial_bar)
+	_tutorial_hint = UIFactory.label("", "Micro", UIPalette.amber)
+	box.add_child(_tutorial_hint)
+	_tutorial_panel.add_child(box)
+	_tutorial_panel.visible = false
+
+
+func _build_hazard_overlay() -> void:
+	_hazard_overlay = ColorRect.new()
+	_hazard_overlay.color = Color(0.0, 0.0, 0.0, 0.0)
+	_hazard_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hazard_overlay.z_index = -5
+	_anchored(_hazard_overlay, Control.PRESET_FULL_RECT, 0, 0, 0, 0)
+	_hazard_label = UIFactory.label("", "Eyebrow", UIPalette.ivory)
+	_hazard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_anchored(_hazard_label, Control.PRESET_CENTER_BOTTOM, -140, -118, 140, -88)
+	_hazard_label.visible = false
+
+
+func _update_world_chip() -> void:
+	if _world_chip == null:
+		return
+	if _tactical_data.is_empty():
+		_world_chip.visible = false
+		return
+	var in_dungeon := bool(_tactical_data.get("in_dungeon", false))
+	_world_chip.visible = not in_dungeon
+	var weather: Dictionary = _tactical_data.get("weather", {}) if _tactical_data.get("weather", {}) is Dictionary else {}
+	var icon_name := StringName(weather.get("icon", &"weather-sun"))
+	var texture := UIIcons.get_icon(icon_name)
+	if texture == null:
+		texture = UIIcons.get_icon(&"weather-sun")
+	if _weather_icon != null:
+		_weather_icon.texture = texture
+	if _weather_label != null:
+		_weather_label.text = String(weather.get("display_name", "Clear")).to_upper()
+		_weather_label.add_theme_color_override("font_color", weather.get("color", UIPalette.amber))
+	if _clock_label != null:
+		_clock_label.text = String(_tactical_data.get("clock_text", "--:--"))
+	if in_dungeon and _clock_label != null:
+		_clock_label.text = "UNDER-REACH"
+	if _world_chip != null:
+		_world_chip.visible = not in_dungeon
+	if _minimap != null:
+		_minimap.visible = _minimap_enabled and not _kia and not in_dungeon
+	if in_dungeon and _dungeon_panel != null:
+		_dungeon_panel.visible = true
+		_dungeon_label.text = "UNDER-REACH · " + String(_tactical_data.get("dungeon_name", "")).to_upper()
+
+
+func _on_hazard_state_changed(state: StringName) -> void:
+	_hazard_state = state
+	if _hazard_overlay == null:
+		return
+	match state:
+		&"water":
+			_hazard_overlay.color = Color(0.05, 0.22, 0.32, 0.20)
+			if _hazard_label != null:
+				_hazard_label.text = "UNDERWATER"
+				_hazard_label.visible = true
+		&"lava":
+			_hazard_overlay.color = Color(0.72, 0.14, 0.04, 0.26)
+			if _hazard_label != null:
+				_hazard_label.text = "LAVA — MOVE"
+				_hazard_label.visible = true
+		_:
+			_hazard_overlay.color = Color(0.0, 0.0, 0.0, 0.0)
+			if _hazard_label != null:
+				_hazard_label.visible = false
+
+
+func _on_tutorial_stage_changed(stage: Dictionary) -> void:
+	if _tutorial_panel == null:
+		return
+	if stage.is_empty() or bool(stage.get("complete", false)):
+		_tutorial_panel.visible = false
+		return
+	_tutorial_panel.visible = true
+	_tutorial_title.text = "FIELD TRAINING %d/%d · %s" % [
+		int(stage.get("index", 0)) + 1,
+		int(stage.get("total", 5)),
+		String(stage.get("title", "")),
+	]
+	_tutorial_body.text = String(stage.get("body", ""))
+	_tutorial_hint.text = String(stage.get("hint", ""))
+	if _tutorial_bar != null:
+		_tutorial_bar.value = clampf(float(stage.get("progress", 0.0)), 0.0, 1.0) * 100.0
+
+
+func _on_dungeon_state_changed(active: bool, dungeon_name: String) -> void:
+	if _dungeon_panel != null:
+		_dungeon_panel.visible = active
+		if active:
+			_dungeon_label.text = "UNDER-REACH · " + dungeon_name.to_upper()
+	if _world_chip != null:
+		_world_chip.visible = not active
+	if _minimap != null:
+		_minimap.visible = _minimap_enabled and not _kia and not active
+
+
 func _build_exfil_panel() -> void:
-	_exfil_panel = _make_hud_panel(Control.PRESET_CENTER_TOP, -178, 108, 178, 164)
+	_exfil_panel = _make_hud_panel(Control.PRESET_CENTER_TOP, -178, 156, 178, 212)
 	var box := UIFactory.vbox(4)
 	var head := UIFactory.hbox(UIPalette.SP2, BoxContainer.ALIGNMENT_CENTER)
 	head.add_child(UIFactory.icon(&"exfil", 16, UIPalette.amber))
@@ -218,7 +376,7 @@ func _build_exfil_panel() -> void:
 
 
 func _build_boss_panel() -> void:
-	_boss_panel = _make_hud_panel(Control.PRESET_CENTER_TOP, -300, 112, 300, 168)
+	_boss_panel = _make_hud_panel(Control.PRESET_CENTER_TOP, -300, 220, 300, 276)
 	var box := UIFactory.vbox(4)
 	var head := UIFactory.hbox(UIPalette.SP2)
 	head.add_child(UIFactory.icon(&"warning", 15, UIPalette.danger))
@@ -286,6 +444,27 @@ func _build_notifications() -> void:
 	_notify_box = UIFactory.vbox(UIPalette.SP2)
 	_notify_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_anchored(_notify_box, Control.PRESET_TOP_RIGHT, -PANEL_PAD - 320, 196, -PANEL_PAD, 204)
+
+
+## Compact Reach Event banner. Sits above the subtitle/ability tray, never
+## competes with gameplay panels, and queues events so rapid-fire world events
+## are all readable.
+func _build_world_event_banner() -> void:
+	_world_event_panel = _make_hud_panel(Control.PRESET_CENTER_BOTTOM, -320, -PANEL_PAD - 252, 320, -PANEL_PAD - 174)
+	_world_event_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_world_event_panel.visible = false
+	var box := UIFactory.vbox(3)
+	var head := UIFactory.hbox(UIPalette.SP2, BoxContainer.ALIGNMENT_CENTER)
+	_world_event_icon = UIFactory.icon(&"bolt", 16, UIPalette.amber)
+	_world_event_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	head.add_child(_world_event_icon)
+	_world_event_title = UIFactory.label("REACH EVENT", "Eyebrow", UIPalette.amber)
+	head.add_child(_world_event_title)
+	box.add_child(head)
+	_world_event_body = UIFactory.wrapped("", "BodySmall", UIPalette.ivory)
+	_world_event_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(_world_event_body)
+	_world_event_panel.add_child(box)
 
 
 func _build_vitals() -> void:
@@ -471,6 +650,10 @@ func _connect_bus() -> void:
 	EventBus.notification_requested.connect(_on_notification_requested)
 	EventBus.radio_message.connect(_on_radio_message)
 	EventBus.game_paused.connect(_on_game_paused)
+	EventBus.hazard_state_changed.connect(_on_hazard_state_changed)
+	EventBus.tutorial_stage_changed.connect(_on_tutorial_stage_changed)
+	EventBus.dungeon_state_changed.connect(_on_dungeon_state_changed)
+	EventBus.world_event.connect(_on_world_event)
 
 
 func _exit_tree() -> void:
@@ -490,6 +673,14 @@ func _exit_tree() -> void:
 		EventBus.radio_message.disconnect(_on_radio_message)
 	if EventBus.game_paused.is_connected(_on_game_paused):
 		EventBus.game_paused.disconnect(_on_game_paused)
+	if EventBus.hazard_state_changed.is_connected(_on_hazard_state_changed):
+		EventBus.hazard_state_changed.disconnect(_on_hazard_state_changed)
+	if EventBus.tutorial_stage_changed.is_connected(_on_tutorial_stage_changed):
+		EventBus.tutorial_stage_changed.disconnect(_on_tutorial_stage_changed)
+	if EventBus.dungeon_state_changed.is_connected(_on_dungeon_state_changed):
+		EventBus.dungeon_state_changed.disconnect(_on_dungeon_state_changed)
+	if EventBus.world_event.is_connected(_on_world_event):
+		EventBus.world_event.disconnect(_on_world_event)
 	_unbind_player()
 
 
@@ -685,8 +876,10 @@ func _on_extraction_state_changed(state: StringName, seconds_left: float) -> voi
 		return
 	if state == &"holding":
 		_exfil_panel.visible = true
+		if _tutorial_panel != null:
+			_tutorial_panel.visible = false
 		_exfil_label.text = "EXFIL SHIP INBOUND  %s" % UIPalette.format_time(seconds_left)
-		var total := maxf(1.0, RunState.EXFIL_HOLD)
+		var total := maxf(1.0, RunState.get_exfil_hold_total())
 		_exfil_bar.value = clampf(1.0 - seconds_left / total, 0.0, 1.0) * 100.0
 		if _exfil_detail != null:
 			var records := ProfileState.get_records()
@@ -705,6 +898,73 @@ func _on_notification_requested(title: String, message: String, severity: String
 
 func _on_radio_message(speaker: String, line: String) -> void:
 	show_subtitle(speaker, line)
+
+
+func _on_world_event(title: String, description: String, icon: StringName, color: Color) -> void:
+	if _world_event_panel == null:
+		return
+	_world_event_queue.append({
+		"title": title,
+		"description": description,
+		"icon": icon,
+		"color": color,
+	})
+	while _world_event_queue.size() > WORLD_EVENT_MAX_QUEUE:
+		_world_event_queue.pop_front()
+	if not _world_event_active:
+		_show_next_world_event()
+
+
+func _show_next_world_event() -> void:
+	if _world_event_panel == null or not is_instance_valid(_world_event_panel) or _world_event_queue.is_empty():
+		_world_event_active = false
+		return
+	_world_event_active = true
+	_world_event_token += 1
+	var token := _world_event_token
+	var event: Dictionary = _world_event_queue.pop_front()
+	var accent: Color = event.get("color", UIPalette.amber)
+	_world_event_panel.add_theme_stylebox_override(
+		"panel",
+		UITheme._box(UIPalette.alpha(UIPalette.ink, 0.86), UIPalette.alpha(accent, 0.6), UIPalette.R_MD, 1, Vector4(14, 10, 14, 10))
+	)
+	_world_event_title.text = String(event.get("title", "Reach Event")).to_upper()
+	_world_event_title.add_theme_color_override("font_color", accent)
+	_world_event_body.text = String(event.get("description", ""))
+	var icon_name := _safe_hud_icon(StringName(event.get("icon", &"bolt")), &"bolt")
+	var texture := UIIcons.get_icon(icon_name)
+	if texture == null:
+		texture = UIIcons.get_icon(&"bolt")
+	if _world_event_icon != null:
+		_world_event_icon.texture = texture
+		_world_event_icon.modulate = accent
+	_world_event_panel.visible = true
+	_world_event_panel.modulate.a = 1.0
+	if not UIPalette.reduce_motion:
+		UIFactory.animate_in(_world_event_panel)
+	await get_tree().create_timer(WORLD_EVENT_HOLD).timeout
+	if not is_inside_tree() or token != _world_event_token:
+		return
+	if _world_event_panel == null or not is_instance_valid(_world_event_panel):
+		return
+	if UIPalette.reduce_motion:
+		_world_event_panel.visible = false
+	else:
+		var tween := _world_event_panel.create_tween()
+		tween.tween_property(_world_event_panel, "modulate:a", 0.0, UIPalette.motion(0.25))
+		await tween.finished
+	if _world_event_panel == null or not is_instance_valid(_world_event_panel):
+		return
+	_world_event_panel.visible = false
+	_world_event_panel.modulate.a = 1.0
+	_world_event_active = false
+	_show_next_world_event()
+
+
+func _safe_hud_icon(icon_name: StringName, fallback: StringName) -> StringName:
+	if UIIcons.has_icon(icon_name):
+		return icon_name
+	return fallback if UIIcons.has_icon(fallback) else &"bolt"
 
 
 # ---------------------------------------------------------------------------
@@ -868,17 +1128,52 @@ func _run_identity_tooltip() -> String:
 	var difficulty_name := String(ContentDB.get_difficulty(ProfileState.get_last_difficulty()).get("display_name", "Patrol"))
 	if RunState.active:
 		difficulty_name = RunState.get_difficulty_name()
-	var quick := _run_is_quick()
-	var clock := "09:00" if quick else "18:00"
+	var mode := _run_mode_data()
+	var mode_name := _run_mode_name()
+	var tag := _run_mode_tag()
+	var clock := _run_mode_clock()
+	var scale := float(mode.get("time_scale", 1.0)) if not mode.is_empty() else (2.0 if _run_is_quick() else 1.0)
+	var mode_descriptor := mode_name.to_lower()
+	if scale > 1.0:
+		mode_descriptor += " ×%.0f" % scale
+	if not tag.is_empty() and tag.to_upper() != "STANDARD":
+		mode_descriptor += " · " + tag
 	var storm := UIPalette.format_time(RunState.get_storm_start_time()) if RunState.active else "12:00"
 	return "Run identity: %s · %s (T%d) · %s mode, %s clock. Collapse begins after %s of run time." % [
 		_run_map_name(),
 		difficulty_name,
 		_run_threat(),
-		"quick ×2" if quick else "normal",
+		mode_descriptor,
 		clock,
 		storm,
 	]
+
+
+func _run_mode_data() -> Dictionary:
+	if RunState.active:
+		var active_mode = RunState.get_mode()
+		if active_mode is Dictionary and not (active_mode as Dictionary).is_empty():
+			return active_mode as Dictionary
+		return ContentDB.get_game_mode(RunState.get_mode_id())
+	return ContentDB.get_game_mode(ProfileState.get_last_mode())
+
+
+func _run_mode_clock() -> String:
+	if RunState.active:
+		var run_clock := RunState.get_mode_clock()
+		if not run_clock.is_empty():
+			return run_clock
+	var mode := _run_mode_data()
+	var mode_id := StringName(mode.get("id", &""))
+	var clock := ContentDB.get_mode_clock(mode_id)
+	if clock.is_empty():
+		clock = String(mode.get("clock", "18:00"))
+	return clock
+
+
+func _run_mode_tag() -> String:
+	var mode := _run_mode_data()
+	return String(mode.get("tag", "")).strip_edges()
 
 
 func _run_is_quick() -> bool:
@@ -899,9 +1194,13 @@ func _run_map_name() -> String:
 
 
 func _run_mode_name() -> String:
+	var mode := _run_mode_data()
+	var mode_name := String(mode.get("display_name", mode.get("name", ""))).strip_edges()
+	if not mode_name.is_empty():
+		return mode_name
 	if RunState.active:
 		return RunState.get_mode_name()
-	return "Quick" if ProfileState.get_last_mode() == &"quick" else "Normal"
+	return "Normal"
 
 
 func _run_threat() -> int:
@@ -1142,6 +1441,26 @@ func _reposition_objective_panel() -> void:
 
 func get_minimap() -> Control:
 	return _minimap
+
+
+func get_world_chip() -> Control:
+	return _world_chip
+
+
+func get_tutorial_panel() -> Control:
+	return _tutorial_panel
+
+
+func get_world_event_panel() -> Control:
+	return _world_event_panel
+
+
+func get_dungeon_panel() -> Control:
+	return _dungeon_panel
+
+
+func get_hazard_overlay() -> Control:
+	return _hazard_overlay
 
 
 func get_map_overlay() -> Control:
@@ -1386,9 +1705,9 @@ func _process(delta: float) -> void:
 	_tactical_accum += delta
 	if _tactical_accum >= 0.2:
 		_tactical_accum = 0.0
-		if (_minimap != null and _minimap.visible) or _map_open:
-			_refresh_tactical_data()
+		_refresh_tactical_data()
 		_update_status_chips()
+		_update_world_chip()
 
 	# Snapshot polling fallback (max 10 Hz) when the player has no signal.
 	if not _has_hud_signal and player != null:

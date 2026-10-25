@@ -195,6 +195,19 @@ static func icon_row(icon_name: StringName, text: String, variation: String = "B
 	return box
 
 
+## Hexagonal icon medallion (icon-first cards, ability and discipline rows).
+static func medallion(
+	icon_name: StringName,
+	diameter: int = 40,
+	accent: Color = UIPalette.mint,
+	glyph_ratio: float = 0.52,
+	filled: bool = true
+) -> UIIconMedallion:
+	var node := UIIconMedallion.new()
+	node.configure(icon_name, diameter, accent, glyph_ratio, filled)
+	return node
+
+
 # ---------------------------------------------------------------------------
 # Panels
 # ---------------------------------------------------------------------------
@@ -218,6 +231,31 @@ static func tone_panel(accent: Color, radius: int = UIPalette.R_LG) -> PanelCont
 static func tinted_panel(bg: Color, border: Color, radius: int = UIPalette.R_LG) -> PanelContainer:
 	var node := PanelContainer.new()
 	node.add_theme_stylebox_override("panel", UITheme._box(bg, border, radius, 1, Vector4(16, 12, 16, 12)))
+	return node
+
+
+## Thin passive frame around a piece of code-drawn art. The frame never takes
+## mouse input; `selected` thickens the tinted border for pick states.
+static func art_frame(child: Control, accent: Color, selected: bool = false) -> PanelContainer:
+	var node := PanelContainer.new()
+	node.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	node.add_theme_stylebox_override(
+		"panel",
+		UITheme._box(
+			UIPalette.alpha(accent, 0.10 if selected else 0.045),
+			UIPalette.alpha(accent, 0.95 if selected else 0.4),
+			UIPalette.R_MD,
+			2 if selected else 1,
+			Vector4(4, 4, 4, 4)
+		)
+	)
+	if selected:
+		node.set_meta("selected", true)
+	if child != null:
+		if child.get_parent() != null:
+			child.reparent(node, false)
+		else:
+			node.add_child(child)
 	return node
 
 

@@ -51,5 +51,26 @@ func first_focus_control() -> Control:
 	return super.first_focus_control()
 
 
+# ---------------------------------------------------------------------------
+# Test / automation accessors (delegate to the reusable settings panel)
+# ---------------------------------------------------------------------------
+
+func get_settings_panel() -> UISettingsPanel:
+	return _panel
+
+
+## Interactive control for a setting key, e.g. "window_mode" or "render_scale".
+func get_control(key: String) -> Control:
+	if _panel != null and is_instance_valid(_panel):
+		return _panel.get_control(key)
+	return null
+
+
+func get_option_control(key: String) -> OptionButton:
+	if _panel != null and is_instance_valid(_panel):
+		return _panel.get_option_control(key)
+	return null
+
+
 func _layout() -> void:
 	pass

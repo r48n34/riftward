@@ -51,6 +51,10 @@ var _capturing_action: StringName = &""
 var _capture_button: Button = null
 var _save_pending := false
 var _control_rows: Dictionary = {}
+## Settings rows by key. `_setting_controls` holds the interactive leaf
+## (OptionButton/CheckButton/HSlider) so tests and tooling can drive it.
+var _setting_rows: Dictionary = {}
+var _setting_controls: Dictionary = {}
 
 
 func _ready() -> void:
@@ -63,7 +67,7 @@ func _build() -> void:
 	_add_section_header("Audio", &"sound", "Master mix and interface feedback.")
 	_build_audio()
 
-	_add_section_header("Display", &"display", "Window mode, sync and interface scale.")
+	_add_section_header("Display", &"display", "Window mode, resolution, sync, rendering and interface scale.")
 	_build_display()
 
 	_add_section_header("Gameplay", &"crosshair", "How the Reach feels in your hands.")
@@ -119,10 +123,78 @@ func _build_audio() -> void:
 
 func _build_display() -> void:
 	var box := _start_card()
-	box.add_child(_switch_row("Fullscreen", "fullscreen", "Borderless fullscreen presentation."))
-	box.add_child(_switch_row("V-Sync", "vsync", "Synchronise frame delivery to the display."))
-	box.add_child(_option_row("Quality preset", "quality", ["Low", "Medium", "High", "Ultra"], QUALITY_VALUES))
-	box.add_child(_slider_row("Interface scale", "ui_scale", 0.8, 1.4, 0.05, "scale"))
+	# Live monitor summary: the who/what/where line for the whole section.
+	box.add_child(_display_summary_row())
+	box.add_child(_option_row_options(
+		"Window mode",
+		"window_mode",
+		App.get_window_mode_options(),
+		"Windowed runs in a bordered resizable window. Borderless fills the screen with no chrome. Fullscreen takes exclusive display control and applies at the monitor's native resolution."
+	))
+	box.add_child(_option_row_options(
+		"Resolution",
+		"resolution",
+		App.get_resolution_options(),
+		"Windowed mode applies the chosen render resolution and centres the window. Borderless and fullscreen always fill the monitor; the resolution is kept for when you return to windowed mode."
+	))
+	box.add_child(_switch_row("V-Sync", "vsync", "Synchronise frame delivery to the display. Disable for lower input latency and uncapped frame rates."))
+	box.add_child(_slider_row(
+		"Render scale",
+		"render_scale",
+		0.5,
+		1.0,
+		0.05,
+		"percent",
+		"Internal 3D render resolution. Lower values raise frame rate at the cost of sharpness; the interface stays crisp."
+	))
+	box.add_child(_option_row_options(
+		"Anti-aliasing",
+		"anti_aliasing",
+		App.get_aa_options(),
+		"Edge smoothing. FXAA is cheapest, MSAA multiplies geometry samples, TAA reprojects across frames for the cleanest motion at a small cost."
+	))
+	box.add_child(_option_row_options(
+		"Frame rate limit",
+		"fps_limit",
+		App.get_fps_options(),
+		"Cap the frame rate to stabilise frame pacing and reduce heat. Unlimited lets the display and V-Sync decide."
+	))
+	box.add_child(_option_row(
+		"Quality preset",
+		"quality",
+		["Low", "Medium", "High", "Ultra"],
+		QUALITY_VALUES,
+		"Shadow and LOD preset. Higher levels raise shadow atlas resolution and keep mesh detail at distance."
+	))
+	box.add_child(_slider_row(
+		"Interface scale",
+		"ui_scale",
+		0.8,
+		1.4,
+		0.05,
+		"scale",
+		"Scale all interface text, spacing and controls. Useful on high-density displays or at a distance."
+	))
+
+
+func _display_summary_row() -> HBoxContainer:
+	var row := UIFactory.hbox(UIPalette.SP2)
+	row.mouse_filter = Control.MOUSE_FILTER_PASS
+	var monitor := UIFactory.icon_or_null(&"display", 18, UIPalette.mint)
+	if monitor != null:
+		monitor.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(monitor)
+	var summary_text := String(App.get_display_summary())
+	var summary := UIFactory.label(summary_text, "MonoSmall", UIPalette.ivory)
+	summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	summary.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	summary.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(summary)
+	row.tooltip_text = "Current display: %s" % summary_text
+	var preset := UIFactory.label("DISPLAY", "Micro", UIPalette.muted_dim)
+	preset.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(preset)
+	return row
 
 
 func _build_gameplay() -> void:
@@ -194,8 +266,10 @@ func _binding_row(entry: Dictionary) -> HBoxContainer:
 # Input rows
 # ---------------------------------------------------------------------------
 
-func _slider_row(label_text: String, key: String, min_value: float, max_value: float, step: float, format_mode: String) -> HBoxContainer:
+func _slider_row(label_text: String, key: String, min_value: float, max_value: float, step: float, format_mode: String, description: String = "") -> HBoxContainer:
 	var row := UIFactory.hbox(UIPalette.SP4)
+	if not description.is_empty():
+		row.tooltip_text = description
 	var name_label := UIFactory.label(label_text, "Body")
 	name_label.custom_minimum_size = Vector2(210, 0)
 	name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -214,6 +288,7 @@ func _slider_row(label_text: String, key: String, min_value: float, max_value: f
 	slider.drag_ended.connect(func(_changed: bool) -> void: _save())
 	row.add_child(slider)
 	row.add_child(value_label)
+	_register_setting_row(key, row, slider)
 	return row
 
 
@@ -233,18 +308,22 @@ func _switch_row(label_text: String, key: String, description: String) -> HBoxCo
 		_commit(key, pressed, true)
 	)
 	row.add_child(toggle)
+	_register_setting_row(key, row, toggle)
 	return row
 
 
-func _option_row(label_text: String, key: String, labels: Array, values: Array) -> HBoxContainer:
+func _option_row(label_text: String, key: String, labels: Array, values: Array, description: String = "") -> HBoxContainer:
 	var row := UIFactory.hbox(UIPalette.SP4)
+	if not description.is_empty():
+		row.tooltip_text = description
 	var name_label := UIFactory.label(label_text, "Body")
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(name_label)
 	var option := UIFactory.option_button(labels, 0)
-	var current := String(App.get_setting(key, values[0] if not values.is_empty() else ""))
-	var selected := values.find(current)
+	# Match the raw typed value (int fps caps, String resolution ids, ...). String
+	# coercion would silently mis-select integer-valued options.
+	var selected := values.find(App.get_setting(key))
 	if selected >= 0:
 		option.select(selected)
 	option.custom_minimum_size = Vector2(190, 38)
@@ -253,7 +332,53 @@ func _option_row(label_text: String, key: String, labels: Array, values: Array) 
 			_commit(key, values[index], true)
 	)
 	row.add_child(option)
+	_register_setting_row(key, row, option)
 	return row
+
+
+## Option row sourced from one of App's display option getters. Entries may be
+## {label, value} dictionaries or plain values; plain values label themselves.
+func _option_row_options(label_text: String, key: String, options: Array, description: String = "") -> HBoxContainer:
+	var labels: Array = []
+	var values: Array = []
+	for entry in options:
+		if entry is Dictionary:
+			var value: Variant = entry.get("value", entry.get("id", entry.get("label", "")))
+			values.append(value)
+			labels.append(String(entry.get("label", str(value))))
+		else:
+			values.append(entry)
+			labels.append(str(entry))
+	return _option_row(label_text, key, labels, values, description)
+
+
+## Register a settings row for meta lookup and the public test accessors.
+func _register_setting_row(key: String, row: Control, control: Control) -> void:
+	row.set_meta("setting_key", key)
+	if control != null:
+		control.set_meta("setting_key", key)
+	_setting_rows[key] = row
+	_setting_controls[key] = control
+
+
+# ---------------------------------------------------------------------------
+# Test / automation accessors
+# ---------------------------------------------------------------------------
+
+## Interactive leaf for a settings key (OptionButton, CheckButton or HSlider).
+## Returns null for unknown keys.
+func get_control(key: String) -> Control:
+	return _setting_controls.get(key) as Control
+
+
+## Typed convenience for OptionButton-backed settings.
+func get_option_control(key: String) -> OptionButton:
+	return _setting_controls.get(key) as OptionButton
+
+
+## The full row (label + control) that carries meta("setting_key", key).
+func get_setting_row(key: String) -> Control:
+	return _setting_rows.get(key) as Control
 
 
 func _format_value(value: float, mode: String) -> String:

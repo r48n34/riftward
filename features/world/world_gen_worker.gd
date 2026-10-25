@@ -175,6 +175,8 @@ func build_final_fields(p: Dictionary) -> Dictionary:
 	var pads: Array = p.get("pads", [])
 	var links: Array = p.get("links", [])
 	var markers: Array = p.get("markers", [])
+	var basins: Array = p.get("basins", [])
+	var planet_palette: Dictionary = p.get("planet_palette", {})
 	var path_width: float = float(p.get("path_width", 7.0))
 	var map_tex_res: int = int(p.get("map_tex_res", 256))
 	var pts := grid_res + 1
@@ -188,6 +190,11 @@ func build_final_fields(p: Dictionary) -> Dictionary:
 	path_hsum.resize(total)
 	var path_wsum := PackedFloat32Array()
 	path_wsum.resize(total)
+
+	# 0) Carve fluid basins first so pads/roads can meet the new ground.
+	for basin in basins:
+		if basin is Dictionary:
+			_carve_basin(h, basin, grid_res, map_size)
 
 	# 1) Pads first so roads can meet their graded height.
 	for pad in pads:
@@ -208,13 +215,26 @@ func build_final_fields(p: Dictionary) -> Dictionary:
 			h[i] = lerpf(h[i], target, blend)
 			path_mask[i] = clampf(w, 0.0, 1.0)
 
+	# 4) Fluid mask from the final ground: where the terrain sits below a basin's
+	# surface level the basin holds water/lava.
+	var fluid_mask := PackedFloat32Array()
+	fluid_mask.resize(total)
+	for basin in basins:
+		if basin is Dictionary:
+			_rasterize_fluid_mask(fluid_mask, h, basin, grid_res, map_size)
+
 	# Legibility at 7m/px beats extra raster detail here; the map is a UI overlay.
-	var map_image := _build_map_image(h, p, path_mask, pad_mask, markers, map_tex_res)
+	var map_params := p.duplicate()
+	map_params["fluid_mask"] = fluid_mask
+	map_params["basins"] = basins
+	map_params["planet_palette"] = planet_palette
+	var map_image := _build_map_image(h, map_params, path_mask, pad_mask, markers, map_tex_res)
 	var elapsed := Time.get_ticks_msec() - t_start
 	return {
 		"heights": h,
 		"path_mask": path_mask,
 		"pad_mask": pad_mask,
+		"fluid_mask": fluid_mask,
 		"map_image": map_image,
 		"elapsed_ms": elapsed,
 		"half": half,
@@ -291,6 +311,79 @@ func _make_noise(seed_value: int, frequency: float, noise_type: int, fractal_typ
 	n.fractal_lacunarity = 2.0
 	n.fractal_gain = 0.5
 	return n
+
+
+## Lowers the terrain into a bowl under a fluid surface. Runs before pads and
+## roads so the basin reads as natural ground and structures never sit in it.
+func _carve_basin(h: PackedFloat32Array, basin: Dictionary, grid_res: int, map_size: float) -> void:
+	var center: Vector2 = basin.get("center", Vector2.ZERO)
+	var radius := maxf(4.0, float(basin.get("radius", 40.0)))
+	var falloff := maxf(1.0, float(basin.get("falloff", 14.0)))
+	var level := float(basin.get("level", 0.0))
+	var depth := maxf(1.0, float(basin.get("depth", 6.0)))
+	var target := level - depth
+	var rmax := radius + falloff
+	var pts := grid_res + 1
+	var cell := map_size / float(grid_res)
+	var half := map_size * 0.5
+	var ix0 := maxi(0, int(floorf((center.x - rmax + half) / cell)))
+	var ix1 := mini(grid_res, int(ceilf((center.x + rmax + half) / cell)))
+	var iz0 := maxi(0, int(floorf((center.y - rmax + half) / cell)))
+	var iz1 := mini(grid_res, int(ceilf((center.y + rmax + half) / cell)))
+	for iz in range(iz0, iz1 + 1):
+		var z := -half + float(iz) * cell
+		for ix in range(ix0, ix1 + 1):
+			var x := -half + float(ix) * cell
+			var d := Vector2(x, z).distance_to(center)
+			if d > rmax:
+				continue
+			var w := smoothstep(rmax, radius * 0.35, d)
+			if w <= 0.0:
+				continue
+			var idx := iz * pts + ix
+			if h[idx] > target:
+				h[idx] = lerpf(h[idx], target, w * 0.92)
+
+
+## Marks cells where the final ground sits below the basin's fluid surface.
+func _rasterize_fluid_mask(mask: PackedFloat32Array, h: PackedFloat32Array, basin: Dictionary, grid_res: int, map_size: float) -> void:
+	var center: Vector2 = basin.get("center", Vector2.ZERO)
+	var radius := maxf(4.0, float(basin.get("radius", 40.0)))
+	var level := float(basin.get("level", 0.0))
+	var depth := maxf(0.5, float(basin.get("depth", 6.0)))
+	var pts := grid_res + 1
+	var cell := map_size / float(grid_res)
+	var half := map_size * 0.5
+	var ix0 := maxi(0, int(floorf((center.x - radius + half) / cell)))
+	var ix1 := mini(grid_res, int(ceilf((center.x + radius + half) / cell)))
+	var iz0 := maxi(0, int(floorf((center.y - radius + half) / cell)))
+	var iz1 := mini(grid_res, int(ceilf((center.y + radius + half) / cell)))
+	for iz in range(iz0, iz1 + 1):
+		var z := -half + float(iz) * cell
+		for ix in range(ix0, ix1 + 1):
+			var x := -half + float(ix) * cell
+			var d := Vector2(x, z).distance_to(center)
+			if d > radius:
+				continue
+			var idx := iz * pts + ix
+			if h[idx] >= level:
+				continue
+			var edge := smoothstep(radius, radius * 0.55, d)
+			var deep := clampf((level - h[idx]) / depth, 0.0, 1.0)
+			var m := edge * clampf(deep * 1.8 + 0.08, 0.0, 1.0)
+			mask[idx] = maxf(mask[idx], m)
+
+
+func _fluid_type_at(x: float, z: float, basins: Array) -> int:
+	var point := Vector2(x, z)
+	for basin in basins:
+		if not (basin is Dictionary):
+			continue
+		var center: Vector2 = basin.get("center", Vector2.ZERO)
+		var radius := float(basin.get("radius", 40.0)) + float(basin.get("falloff", 14.0))
+		if point.distance_squared_to(center) <= radius * radius:
+			return int(basin.get("type", 1))
+	return 0
 
 
 ## Blends terrain toward a flat construction pad with a soft outer falloff.
@@ -376,7 +469,8 @@ func _rasterize_polyline(h: PackedFloat32Array, path_wsum: PackedFloat32Array, p
 
 
 ## Renders the tactical map overlay: biome colors + hillshade + contours +
-## roads + objective rings. Runs inside the worker thread (pure Image data).
+## roads + objective rings + fluid tint. Runs inside the worker thread (pure
+## Image data).
 func _build_map_image(h: PackedFloat32Array, p: Dictionary, path_mask: PackedFloat32Array, pad_mask: PackedFloat32Array, markers: Array, res: int) -> Image:
 	var grid_res: int = int(p["grid_res"])
 	var map_size: float = float(p["map_size"])
@@ -387,6 +481,9 @@ func _build_map_image(h: PackedFloat32Array, p: Dictionary, path_mask: PackedFlo
 	var detail_a: PackedFloat32Array = p["detail_a"]
 	var detail_b: PackedFloat32Array = p["detail_b"]
 	var macro: PackedFloat32Array = p["macro"]
+	var palette: Dictionary = p.get("planet_palette", {})
+	var fluid_mask: PackedFloat32Array = p.get("fluid_mask", PackedFloat32Array())
+	var basins: Array = p.get("basins", [])
 	var half := map_size * 0.5
 	var step := map_size / float(maxi(res - 1, 1))
 	var sun := MAP_SUN_DIR.normalized()
@@ -410,7 +507,14 @@ func _build_map_image(h: PackedFloat32Array, p: Dictionary, path_mask: PackedFlo
 			var border := 0.0
 			if edge > BORDER_START:
 				border = clampf((edge - BORDER_START) / (1.0 - BORDER_START), 0.0, 1.0)
-			var col := Palette.map_color(weights, hh, 1.0 - nrm.y, da, db, mc, pw, shade, border)
+			var col := Palette.map_color(weights, hh, 1.0 - nrm.y, da, db, mc, pw, shade, border, palette)
+			# Fluid basins read as water/lava on the tactical map.
+			if not fluid_mask.is_empty():
+				var fluid_w := sample_scalar_grid(fluid_mask, grid_res, map_size, x, z)
+				if fluid_w > 0.02:
+					var fluid_type := _fluid_type_at(x, z, basins)
+					var fluid_col: Color = Palette.FLUID_LAVA_MAP if fluid_type == 2 else Palette.FLUID_WATER_MAP
+					col = col.lerp(fluid_col, clampf(fluid_w * 1.15, 0.0, 0.92))
 			# Construction pads read as pale cleared ground.
 			var pad_w := sample_scalar_grid(pad_mask, grid_res, map_size, x, z)
 			col = col.lerp(Palette.PAD_COLOR, pad_w * 0.55)

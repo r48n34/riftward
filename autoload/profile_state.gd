@@ -10,7 +10,7 @@ signal currency_changed(salvage: int, cores: int)
 
 const SAVE_PATH := "user://riftward_profile.json"
 const BACKUP_PATH := "user://riftward_profile.json.bak"
-const SAVE_VERSION := 3
+const SAVE_VERSION := 5
 const MAX_LEVEL := 30
 const MechanicUnlocks := preload("res://features/player/mechanic_unlocks.gd")
 
@@ -22,16 +22,21 @@ const STARTING_ABILITIES := {
 	"pathfinder": ["pulse_scan", "blink_step"],
 }
 
+## The rebuilt 8x8 outpost plan. Each entry is the module's top-left cell; the
+## footprint comes from ContentDB's BaseModuleData. Every footprint must stay
+## inside 0..7 on both axes and no two footprints may overlap.
 const BASE_LAYOUT := {
-	"command_nexus": Vector2i(3, 3),
-	"foundry": Vector2i(1, 1),
-	"armory": Vector2i(6, 1),
-	"infirmary": Vector2i(1, 4),
-	"barracks": Vector2i(6, 4),
-	"drift_den": Vector2i(1, 6),
-	"reactor": Vector2i(4, 6),
-	"signal_array": Vector2i(6, 6),
+	"foundry": Vector2i(0, 0),
+	"armory": Vector2i(3, 0),
+	"signal_array": Vector2i(6, 0),
+	"infirmary": Vector2i(0, 3),
+	"command_nexus": Vector2i(3, 2),
+	"reactor": Vector2i(6, 2),
+	"barracks": Vector2i(0, 6),
+	"drift_den": Vector2i(3, 6),
 }
+const BASE_LAYOUT_VERSION := 2
+const BASE_BOARD_SIZE := 8
 
 const SET_BONUSES := {
 	"vanguard": [
@@ -89,17 +94,19 @@ func _defaults() -> Dictionary:
 			"barracks": 0, "drift_den": 0, "reactor": 0, "signal_array": 0,
 		},
 		"base_layout": _layout_payload(),
+		"base_layout_version": BASE_LAYOUT_VERSION,
 		"active_allies": ["mara_voss", "irie_sol"],
 		"ally_ranks": {"mara_voss": 1, "rook": 1, "irie_sol": 1, "toma_nix": 1},
 		"active_pet": "mote",
 		"pet_ranks": {"mote": 1, "cinder": 1, "pip": 1},
 		"unlocked_cosmetics": [],
 		"cosmetics": {"suit": "suit_wayfinder", "dye": "dye_mint", "weapon_skin": "skin_lattice", "pet_shell": "shell_default"},
-		"records": {"deployments": 0, "extractions": 0, "deaths": 0, "kills": 0, "bosses": 0, "best_extraction": 0, "total_salvage": 0},
+		"records": {"deployments": 0, "extractions": 0, "deaths": 0, "kills": 0, "bosses": 0, "best_extraction": 0, "total_salvage": 0, "dungeons_entered": 0, "dungeons_cleared": 0},
 		"contracts_completed": 0,
 		"daily": {},
 		"last_difficulty": "patrol",
 		"last_mode": "normal",
+		"last_map": "",
 		"tutorial_done": false,
 		"last_run": {},
 	}
@@ -111,6 +118,87 @@ func _layout_payload() -> Dictionary:
 		var pos: Vector2i = BASE_LAYOUT[id]
 		payload[id] = [pos.x, pos.y]
 	return payload
+
+
+func _layout_position(layout: Dictionary, module_id: StringName) -> Vector2i:
+	if layout.has(module_id):
+		return _layout_vector(layout[module_id])
+	var key := String(module_id)
+	if layout.has(key):
+		return _layout_vector(layout[key])
+	return Vector2i(-1, -1)
+
+
+func _layout_vector(value: Variant) -> Vector2i:
+	if value is Vector2i:
+		return value
+	if value is Vector2:
+		return Vector2i(int(round(value.x)), int(round(value.y)))
+	if value is Array and value.size() >= 2:
+		var x_value: Variant = value[0]
+		var y_value: Variant = value[1]
+		var x_numeric: bool = x_value is int or x_value is float
+		var y_numeric: bool = y_value is int or y_value is float
+		if not (x_numeric and y_numeric):
+			return Vector2i(-1, -1)
+		var x_float := float(x_value)
+		var y_float := float(y_value)
+		# JSON payloads parse every number as float; require integral values.
+		if absf(x_float - roundf(x_float)) > 0.0001 or absf(y_float - roundf(y_float)) > 0.0001:
+			return Vector2i(-1, -1)
+		return Vector2i(int(roundf(x_float)), int(roundf(y_float)))
+	return Vector2i(-1, -1)
+
+
+## Validates a layout payload (Vector2i or [x, y] entries) against the 8x8
+## outpost board. Returns an empty array when the layout is safe to draw.
+func validate_base_layout(layout: Dictionary) -> PackedStringArray:
+	var errors := PackedStringArray()
+	if layout.is_empty():
+		errors.append("Base layout is empty.")
+		return errors
+	var rects: Dictionary = {}
+	for module_id in BASE_LAYOUT.keys():
+		if not layout.has(module_id) and not layout.has(String(module_id)):
+			errors.append("Base layout is missing module '%s'." % module_id)
+			continue
+		var pos := _layout_position(layout, module_id)
+		if pos.x < 0 or pos.y < 0:
+			errors.append("Module '%s' has an invalid position." % module_id)
+			continue
+		var module := ContentDB.get_base_module(module_id)
+		var footprint: Vector2i = module.footprint if module != null else Vector2i(2, 2)
+		if pos.x + footprint.x > BASE_BOARD_SIZE or pos.y + footprint.y > BASE_BOARD_SIZE:
+			errors.append(
+				"Module '%s' at %s exceeds the %dx%d board." % [module_id, pos, BASE_BOARD_SIZE, BASE_BOARD_SIZE]
+			)
+			continue
+		rects[module_id] = Rect2i(pos, footprint)
+	var placed: Array = rects.keys()
+	for i in placed.size():
+		for j in range(i + 1, placed.size()):
+			var a: Rect2i = rects[placed[i]]
+			var b: Rect2i = rects[placed[j]]
+			if a.intersects(b):
+				errors.append("Modules '%s' and '%s' overlap." % [placed[i], placed[j]])
+	return errors
+
+
+## Resets the layout payload (and version) when it is invalid or was authored
+## for an older board plan. Progression fields are never touched here.
+func ensure_base_layout() -> void:
+	var payload: Variant = data.get("base_layout", {})
+	var version := int(data.get("base_layout_version", 0))
+	var errors := PackedStringArray()
+	if payload is Dictionary:
+		errors = validate_base_layout(payload)
+	else:
+		errors.append("Base layout payload is not a dictionary.")
+	if version != BASE_LAYOUT_VERSION or not errors.is_empty():
+		if not errors.is_empty():
+			push_warning("[ProfileState] Resetting base layout: " + "; ".join(errors))
+		data["base_layout"] = _layout_payload()
+		data["base_layout_version"] = BASE_LAYOUT_VERSION
 
 
 func load_or_create() -> void:
@@ -161,12 +249,23 @@ func _deep_fill(target: Dictionary, defaults: Dictionary) -> void:
 			_deep_fill(target[key], defaults[key])
 
 
-## One-time schema upgrade. Version 3 adds the second primary weapon slot and
-## makes the Sable Rail the default primary for profiles that still carry the
-## original starter rifle.
+## One-time schema upgrade.
+## v5 rebuilds the outpost plan (layout payload + version only; tiers, currency,
+## inventory and every other progression field are preserved).
+## v4 added the second primary weapon slot and makes the Sable Rail the default
+## primary for profiles that still carry the original starter rifle.
 func _migrate_save(loaded_version: int) -> void:
 	if loaded_version >= SAVE_VERSION:
 		return
+	if loaded_version < 5:
+		data["base_layout"] = _layout_payload()
+		data["base_layout_version"] = BASE_LAYOUT_VERSION
+	if loaded_version < 4:
+		_migrate_loadout_v4()
+
+
+## v4 loadout migration: second primary slot + Sable Rail default primary.
+func _migrate_loadout_v4() -> void:
 	var inventory: Array = data.get("inventory", [])
 	if not (inventory is Array):
 		inventory = []
@@ -253,7 +352,8 @@ func _ensure_valid() -> void:
 		data["last_difficulty"] = "patrol"
 	else:
 		data["last_difficulty"] = String(difficulty_id)
-	if not (String(data.get("last_mode", "normal")) in ["normal", "quick"]):
+	var last_mode := StringName(data.get("last_mode", "normal"))
+	if not is_selectable_mode(last_mode):
 		data["last_mode"] = "normal"
 	var attrs: Dictionary = data.get("attributes", {})
 	for attr in ["power", "resolve", "agility", "tech"]:
@@ -322,9 +422,8 @@ func _ensure_valid() -> void:
 	if not data.has("active_pet"):
 		data["active_pet"] = "mote"
 	if not data.has("records"):
-		data["records"] = {"deployments": 0, "extractions": 0, "deaths": 0, "kills": 0, "bosses": 0, "best_extraction": 0, "total_salvage": 0}
-	if not data.has("base_layout"):
-		data["base_layout"] = _layout_payload()
+		data["records"] = {"deployments": 0, "extractions": 0, "deaths": 0, "kills": 0, "bosses": 0, "best_extraction": 0, "total_salvage": 0, "dungeons_entered": 0, "dungeons_cleared": 0}
+	ensure_base_layout()
 
 
 func _default_cosmetic_for(slot: String) -> String:
@@ -487,15 +586,43 @@ func set_last_difficulty(difficulty_id: StringName) -> bool:
 
 
 func get_last_mode() -> StringName:
-	var mode := String(data.get("last_mode", "normal"))
-	return StringName(mode if mode in ["normal", "quick"] else "normal")
+	var mode := StringName(data.get("last_mode", "normal"))
+	if not is_selectable_mode(mode):
+		return &"normal"
+	return mode
 
 
 func set_last_mode(mode_id: StringName) -> bool:
-	var mode := String(mode_id)
-	if not (mode in ["normal", "quick"]):
+	if not is_selectable_mode(mode_id):
 		return false
-	data["last_mode"] = mode
+	data["last_mode"] = String(mode_id)
+	profile_changed.emit()
+	return true
+
+
+## True when ContentDB authors the mode as selectable. Tutorial is a special
+## runtime-only mode and is never persisted as the last mode.
+func is_selectable_mode(mode_id: StringName) -> bool:
+	if mode_id == &"" or mode_id == &"tutorial":
+		return false
+	return mode_id in ContentDB.get_selectable_game_mode_ids()
+
+
+func get_last_map() -> StringName:
+	var map_id := StringName(data.get("last_map", ""))
+	if map_id == &"" or ContentDB.get_map_preset(map_id).is_empty():
+		return &""
+	return map_id
+
+
+func set_last_map(map_id: StringName) -> bool:
+	if map_id == &"":
+		data["last_map"] = ""
+		profile_changed.emit()
+		return true
+	if ContentDB.get_map_preset(map_id).is_empty():
+		return false
+	data["last_map"] = String(map_id)
 	profile_changed.emit()
 	return true
 
@@ -909,11 +1036,23 @@ func get_base_power() -> int:
 
 func get_base_layout() -> Dictionary:
 	var result: Dictionary = {}
-	var payload: Dictionary = data.get("base_layout", {})
-	for id in payload.keys():
-		var arr: Array = payload[id]
-		if arr.size() >= 2:
-			result[StringName(id)] = Vector2i(int(arr[0]), int(arr[1]))
+	var payload_value: Variant = data.get("base_layout", {})
+	var payload: Dictionary = payload_value if payload_value is Dictionary else {}
+	for module_id in BASE_LAYOUT.keys():
+		var pos := _layout_position(payload, module_id)
+		if pos.x < 0 or pos.y < 0:
+			pos = BASE_LAYOUT[module_id]
+		result[StringName(module_id)] = pos
+	# Preserve valid extra module entries authored by other outpost plans.
+	for key in payload.keys():
+		var module_id := StringName(key)
+		if result.has(module_id):
+			continue
+		if ContentDB.get_base_module(module_id) == null:
+			continue
+		var pos := _layout_position(payload, module_id)
+		if pos.x >= 0 and pos.y >= 0:
+			result[module_id] = pos
 	return result
 
 
@@ -1050,6 +1189,30 @@ func get_records() -> Dictionary:
 
 
 func record_run(result: Dictionary, items: Array) -> Dictionary:
+	# Field Training is a guided onboarding run: it persists completion and a
+	# small starter reward, but never counts as a deployment/death or a record.
+	if bool(result.get("tutorial", false)):
+		var tutorial_level_before := get_level()
+		set_tutorial_done()
+		add_xp(maxi(0, int(result.get("xp", 100))))
+		add_currency(100, 0)
+		data["last_run"] = result.duplicate(true)
+		save_now()
+		profile_changed.emit()
+		return {
+			"level_before": tutorial_level_before,
+			"xp_before": 0,
+			"level_after": get_level(),
+			"xp_after": get_xp(),
+			"xp_next": get_xp_for_next_level(),
+			"levels_gained": maxi(0, get_level() - tutorial_level_before),
+			"skill_points_gained": 0,
+			"attribute_points_gained": 0,
+			"skill_points": get_skill_points(),
+			"attribute_points": get_attribute_points(),
+			"unlocks": [],
+			"tutorial": true,
+		}
 	var level_before := get_level()
 	var xp_before := get_xp()
 	var skill_points_before := get_skill_points()
@@ -1063,6 +1226,8 @@ func record_run(result: Dictionary, items: Array) -> Dictionary:
 		records["deaths"] = int(records.get("deaths", 0)) + 1
 	records["kills"] = int(records.get("kills", 0)) + int(result.get("kills", 0))
 	records["bosses"] = int(records.get("bosses", 0)) + int(result.get("bosses", 0))
+	records["dungeons_entered"] = int(records.get("dungeons_entered", 0)) + int(result.get("dungeons_entered", 0))
+	records["dungeons_cleared"] = int(records.get("dungeons_cleared", 0)) + int(result.get("dungeons_cleared", 0))
 	if bool(result.get("extracted", false)):
 		records["total_salvage"] = int(records.get("total_salvage", 0)) + int(result.get("salvage", 0))
 	data["records"] = records

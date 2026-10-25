@@ -46,9 +46,17 @@ world first.
 | `func get_map_preset_id() -> StringName` | applied preset id, or `&""` without a preset |
 | `func generate(world_seed: int) -> void` | async; only main-thread node creation |
 | `func sample_height(world_xz: Vector2) -> float` | bilinear height, valid after generate |
+| `func sample_fluid(world_xz: Vector2) -> Dictionary` | `{type: 0 none / 1 water / 2 lava, level, depth, center, radius}` |
+| `func get_fluid_basins() -> Array[Dictionary]` | seeded basin descriptors |
+| `func get_fluid_root() -> Node3D` | water/lava surface meshes |
+| `func get_biome_names() -> Array[String]` | planet-remapped biome names |
+| `func get_environment_director() -> Node` | single writer for sky/sun/fog |
+| `func get_day_night_cycle() -> Node` | clock, keyframes, sun direction |
+| `func get_weather_system() -> Node` | seeded weather state machine |
+| `func get_interior_pois() -> Array[Dictionary]` | POIs with enterable interiors |
 | `func get_spawn_points() -> Array[Vector3]` | 2 flat drop zones near map center |
 | `func get_exfil_points() -> Array[Dictionary]` | 3 entries `{position: Vector3, name: String}` |
-| `func get_pois() -> Array[Dictionary]` | 16 base POIs + 0–4 preset extras `{position, type, name, radius}` |
+| `func get_pois() -> Array[Dictionary]` | 17 base POIs + 0–4 preset extras `{position, type, name, radius, interior, dungeon_anchor}` |
 | `func get_roadside_points() -> Array[Dictionary]` | 10–14 roadside outbuildings `{position, yaw, kind}` (presets raise the cap) |
 | `func get_nav_region() -> NavigationRegion3D` | null only if `bake_navigation == false` |
 | `func get_map_texture() -> Texture2D` | 256×256 tactical overlay, null before generate |
@@ -78,37 +86,40 @@ world first.
 
 ## POIs
 
-Without a preset there are 16 POIs (13 authored objectives + 3 exfil pads), each
+Without a preset there are 17 POIs (14 authored objectives + 3 exfil pads), each
 with a procedural modular structure and a flattened combat pad:
 
 | type | count | notes |
 | --- | --- | --- |
 | `warden_outpost` | 1 | 60m landmark monolith, courtyard cover |
-| `faction_camp` | 2 | hab, tents, watchtower, containers, barriers |
+| `faction_camp` | 2 | hab, tents, watchtower, containers, barriers; the command hab is enterable |
 | `relay_spire` | 2 | 46m lattice + glowing signal rings |
-| `crash_site` | 1 | broken hull sections, debris, ember glow |
-| `vault` | 1 | bunker facade + blast door |
+| `crash_site` | 1 | broken hull sections, debris, ember glow; the central hull is enterable |
+| `vault` | 1 | bunker facade, open blast door and a 3-bay enterable interior |
 | `anomaly` | 1 | hovering shards, monolith ring |
 | `ruin_field` | 1 | arches, broken columns, alien growth |
-| `ashen_stockade` | 1 | palisade gates, corner towers, cages, command hall |
+| `ashen_stockade` | 1 | palisade gates, corner towers, cages, enterable command hall |
 | `bloom_hive` | 1 | leaning organic spires, pods, membrane canopy |
-| `choir_post` | 1 | dish, lattice mast, signal pylon ring, bunker |
-| `colony_ruins` | 1 | collapsed hab blocks, street slabs, broken tower |
+| `choir_post` | 1 | dish, lattice mast, signal pylon ring, enterable bunker |
+| `colony_ruins` | 1 | collapsed hab blocks, street slabs, broken tower, enterable hab |
+| `derelict_ship` | 1 | landed freighter with ramp, cargo bay, corridor, cockpit and engine room |
 | `exfil_pad` | 3 | landing pads — these ARE `get_exfil_points()` |
 
-Map presets append up to 4 extra objectives after the authored 13. Their kits
-cycle `faction_camp` → `relay_spire` → `ruin_field`, they prefer the preset's
-`biome_index` biome, and they accept a tighter 195 m spacing plus relaxed ground
-flatness. Extra placement is best-effort (a crowded map may place fewer than
-`extra_pois`); all 13 authored POIs and the 3 exfil pads always land.
+Map presets append up to 4 extra objectives after the authored 14. Their kits
+cycle `faction_camp` → `relay_spire` → `ruin_field` → `derelict_ship`, they prefer
+the preset's `biome_index` biome, and they accept a tighter 195 m spacing plus
+relaxed ground flatness. Extra placement is best-effort (a crowded map may place
+fewer than `extra_pois`); all 14 authored POIs and the 3 exfil pads always land.
 
 Every POI root node is named `POI_<index>_<type>` and carries a
-`world_info` meta dictionary `{name, type, position, radius, yaw}`; drop zones
-are `DropZone_00/01`, and roadside roots are `Roadside_00..nn` with
-`{name, type: "roadside", position, radius, yaw}`. Objective/exfil marker
-gameplay can either consume the API dictionaries or attach marker nodes to
-those roots. Exfil positions are the pad centers (flat, collision-safe); beacon
-masts are visible from ~600m.
+`world_info` meta dictionary `{name, type, position, radius, yaw}`; enterable POIs
+also expose `InteriorSpawn_00..` markers and dungeon-capable POIs a
+`DungeonAnchor` marker. `get_pois()` surfaces them as `interior` (spawn positions)
+and `dungeon_anchor` (world position). Drop zones are `DropZone_00/01`, and
+roadside roots are `Roadside_00..nn` with `{name, type: "roadside", position,
+radius, yaw}`. Objective/exfil marker gameplay can either consume the API
+dictionaries or attach marker nodes to those roots. Exfil positions are the pad
+centers (flat, collision-safe); beacon masts are visible from ~600m.
 
 Roadside outbuildings are placed along the road polylines, offset 9–15 m to
 alternating sides, rejected near POIs/spawns, and finalized with collision +
@@ -136,10 +147,15 @@ print(world.get_map_preset_id())       # &"ashen_shelf"; &"" without a preset
 | `map_size` | `float` | optional; defaults to 1800 |
 | `scatter_density` | `float` | scatter multiplier (default 1.0) |
 | `roadside_target` | `int` | max roadside outbuildings (default 14) |
-| `extra_pois` | `int` | extra objectives appended after the authored 13 |
+| `extra_pois` | `int` | extra objectives appended after the authored 14 |
 | `extra_poi_names` | `Array[String]` | names for the extras, in order; missing entries get fallback names |
-| `biome_index` | `int` | 0 Verdant / 1 Ashen / 2 Glass; extra POIs prefer this biome |
+| `biome_index` | `int` | 0 / 1 / 2; extra POIs prefer this planet-remapped biome |
 | `biome_rotation` | `float` | radians; rotates the three biome anchors around the origin (0.0 = authored geography) |
+| `planet_id` | `StringName` | planet identity (biome names, palette, sky keyframes, weather pool, fluid config) |
+| `start_time` | `float` | 0..1 time-of-day at deployment (0.25 sunrise, 0.5 noon, 0.75 sunset) |
+| `fluid` | `Dictionary` | per-map overrides for the planet fluid config (`water_basins`, `lava_basins`, levels) |
+| `planet` | `Dictionary` | embedded by `ContentDB.get_map_preset()`; consumed for tint/sky/biomes |
+| `weather_defs` | `Array[Dictionary]` | embedded weather definitions for the planet's pool |
 | `environment` | `Dictionary` | visual overrides, see below |
 | `world_seed_salt` | `int` | **not consumed by the builder** — the caller mixes it into the `generate()` seed to vary the layout |
 
@@ -147,11 +163,29 @@ print(world.get_map_preset_id())       # &"ashen_shelf"; &"" without a preset
 `sun_color`, `fill_color`, `fog_color` (`Color`), `sun_dir` (`Vector3`, direction
 toward the sun), `sun_energy`, `fog_density`, `volumetric_fog_density`
 (`float`). Missing values keep the default palette; the same dictionary is
-accepted by `world_environment.gd::setup(parent, overrides)`.
+accepted by `world_environment.gd::setup(parent, overrides, planet)`.
 
 With an empty preset (never calling `apply_preset`, or `apply_preset({})`) the
-builder reproduces the default frontier exactly: 16 POIs, 10–14 roadside
-buildings, `scatter_density` 1.0, no biome rotation and the default sky.
+builder reproduces the default frontier: 17 POIs, 10–14 roadside buildings,
+`scatter_density` 1.0, no biome rotation, the default sky, no fluid basins and no
+weather pool (the day/night cycle still runs with palette defaults).
+
+## Planets
+
+`ContentDB.get_map_preset()` embeds the resolved planet dictionary, so the world
+layer never calls an autoload. A planet carries:
+
+| Planet field | Effect |
+| --- | --- |
+| `biome_names[3]` | names returned by `get_biome_names()` / `get_biome_at()` |
+| `terrain_tint[3]`, `tint_strength` | per-biome terrain/scatter tint applied in the terrain worker and tactical map |
+| `sky.night/dawn/day/dusk` | four colour/energy keyframes used by the day/night cycle; the map preset's `environment` overrides the day keyframe |
+| `planet_sky` | ringed-body shader parameters (`planet_dir`, `planet_radius`, bands, ring colour) |
+| `weather_pool` | ordered weather ids; the weather system starts seeded from this pool |
+| `fluid` | water/lava enable flags, basin count ranges and level biases |
+| `hazard` | HUD/codex hazard tag (`none`, `heat`, `deep_water`) |
+| `day_length` | seconds per full day/night cycle |
+| `dungeon_themes` | under-reach theme ids Deployment cycles through |
 
 ## Environment
 
@@ -161,16 +195,53 @@ buildings, `scatter_density` 1.0, no biome rotation and the default sky.
 - Warm key `Sun` (DirectionalLight3D, 4-split shadows, 420m shadow range) and a
   cool `SkyFill` rim light.
 - Exponential dust fog + volumetric god-rays, ACES tone mapping, SSAO, bloom.
+- `EnvironmentDirector` (`get_environment_director()`), the single writer for sky,
+  sun, fill, fog and volumetric density. It merges planet keyframes, map-preset
+  overrides and weather, and exposes `set_time_state()`, `set_weather_state()`,
+  `set_indoor(bool)`, `flash()` and `get_state()`.
+- `DayNightCycle` (`get_day_night_cycle()`): planet `day_length`, seeded
+  `start_time`, four keyframes, moving sun, `get_clock_text()`, `is_night()`.
+- `WeatherSystem` (`get_weather_system()`): seeded weighted state machine with
+  transitions, particles, lightning, `get_state()`, `get_vision_multiplier()`
+  and `get_move_multiplier()`. It is disabled when the preset has no weather defs.
 
 Access via `get_environment_data()` if gameplay wants to tweak exposure/sun.
 If the game scene adds its own `WorldEnvironment`, pass `create_environment=false`.
 
 When a preset is applied, its `environment` dictionary is forwarded to
-`world_environment.gd::setup(parent, overrides)` (see "Map presets" above). The
-overrides restyle the sky shader (`sky_top`, `sky_horizon`, `sky_ground`,
+`world_environment.gd::setup(parent, overrides, planet)` (see "Map presets" above).
+The overrides restyle the sky shader (`sky_top`, `sky_horizon`, `sky_ground`,
 `sun_color`, `sun_dir`), the key/fill lights (`sun_energy`, `fill_color`) and the
 atmosphere (`fog_color`, `fog_density`, `volumetric_fog_density`). Missing keys
 keep the default palette, so the no-preset look is unchanged.
+
+## Fluid basins
+
+`_place_fluid_basins()` chooses 3–6 seeded basins on low, quiet ground away from
+POIs, roads and drop zones, weighted by the planet's `fluid` config. The height
+worker carves bowls and emits a shore/deep mask; `WorldFluid` builds one surface
+mesh per basin (`assets/shaders/world/water.gdshader` or `lava.gdshader`) plus
+lava glow lights. The tactical map tints water and lava.
+
+```gdscript
+var basins: Array = world.get_fluid_basins()
+var sample: Dictionary = world.sample_fluid(Vector2(x, z))
+# sample.type: 0 none, 1 water, 2 lava; level/depth are in metres
+```
+
+Gameplay queries are analytic (no physics volumes). `Player` uses the query for
+buoyancy, swim drag, lava damage and HUD hazard state; `EnemyAgent` uses it for
+water drag and lava damage; scatter skips fluid cells and dresses the shoreline.
+
+## Interiors
+
+Several POIs are hollow: the faction-camp command hab, Vault bunker, crash hull,
+colony hab, Choir bunker, Ashen command hall and the derelict freighter. Doorways
+are 4.2 m wide and ceilings are 3.4 m+ so the 1.3 m-radius navmesh agent can path
+inside. Interiors carry `InteriorSpawn_00..` markers (loot/garrison anchors) and
+dungeon-capable POIs a `DungeonAnchor`; both are surfaced through `get_pois()`.
+The derelict ship is a full freighter kit with a boarding ramp, cargo bay,
+corridor, cockpit and engine room.
 
 ## Navigation
 

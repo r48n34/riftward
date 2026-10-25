@@ -21,6 +21,10 @@ const SHIELD_REGEN_RATE: StringName = &"shield_regen_rate"
 const SHIELD_REGEN_DELAY: StringName = &"shield_regen_delay"
 const ABILITY_RANGE: StringName = &"ability_range"
 const PET_POWER: StringName = &"pet_power"
+## Fraction of environmental (lava/heat) damage ignored, 0.0..0.8.
+const HAZARD_RESIST: StringName = &"hazard_resist"
+## Movement multiplier while swimming, 1.0 = normal.
+const SWIM_SPEED: StringName = &"swim_speed"
 
 const ATTR_POWER: StringName = &"power"
 const ATTR_RESOLVE: StringName = &"resolve"

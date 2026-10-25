@@ -63,10 +63,16 @@ func _rebuild() -> void:
 		return
 	UIFactory.clear_children(_content)
 	var extracted := bool(_result.get("extracted", false))
+	var tutorial := bool(_result.get("tutorial", false))
 	var accent := UIPalette.mint if extracted else UIPalette.danger
 	# Single outcome headline. The seal, subtitle and summary duplicate are gone.
 	var headline := "EXTRACTION CONFIRMED" if extracted else "SIGNAL LOST"
+	if tutorial:
+		headline = "TRAINING COMPLETE" if extracted else "TRAINING ENDED"
+		accent = UIPalette.mint if extracted else UIPalette.amber
 	var icon_name: StringName = &"exfil" if extracted else &"warning"
+	if tutorial:
+		icon_name = &"training"
 
 	var header := UIFactory.hbox(UIPalette.SP4)
 	var glyph := UIFactory.icon_or_null(icon_name, 36, accent)
@@ -108,6 +114,17 @@ func _meta_row(accent: Color) -> PanelContainer:
 	))
 	row.add_child(UIFactory.v_divider(UIPalette.alpha(accent, 0.35)))
 	row.add_child(_meta(&"map", _map_name(), "Map", accent))
+	var planet_name := String(_result.get("planet_name", ""))
+	if not planet_name.is_empty():
+		row.add_child(UIFactory.v_divider(UIPalette.alpha(accent, 0.35)))
+		row.add_child(_meta(&"planet", planet_name, "Planet", UIPalette.violet))
+	var weather_name := String(_result.get("weather_name", ""))
+	if not weather_name.is_empty():
+		row.add_child(UIFactory.v_divider(UIPalette.alpha(accent, 0.35)))
+		row.add_child(_meta(&"weather-sun", weather_name, "Weather at extraction", UIPalette.muted))
+	if int(_result.get("dungeons_cleared", 0)) > 0:
+		row.add_child(UIFactory.v_divider(UIPalette.alpha(accent, 0.35)))
+		row.add_child(_meta(&"dungeon", str(int(_result.get("dungeons_cleared", 0))), "Under-reach clears", UIPalette.violet))
 	row.add_child(UIFactory.v_divider(UIPalette.alpha(accent, 0.35)))
 	row.add_child(_meta(
 		&"skull",
@@ -120,7 +137,7 @@ func _meta_row(accent: Color) -> PanelContainer:
 	row.add_child(UIFactory.v_divider(UIPalette.alpha(accent, 0.35)))
 	row.add_child(_meta(&"timer", UIPalette.format_time(float(_result.get("elapsed", 0.0))), "Time in the field", UIPalette.ivory))
 	row.add_child(UIFactory.v_divider(UIPalette.alpha(accent, 0.35)))
-	row.add_child(_meta(&"bolt", _mode_text(), "Game mode and clock speed", UIPalette.amber))
+	row.add_child(_meta(&"bolt", _mode_text(), _mode_tooltip(), UIPalette.amber))
 	card.add_child(row)
 	return card
 
@@ -139,16 +156,45 @@ func _map_name() -> String:
 
 
 func _mode_text() -> String:
-	var mode_name := String(_result.get("mode_name", ""))
 	var mode_id := StringName(_result.get("mode_id", &""))
+	var mode := ContentDB.get_game_mode(mode_id)
+	var mode_name := String(_result.get("mode_name", "")).strip_edges()
 	if mode_name.is_empty():
-		mode_name = "Quick" if mode_id == &"quick" else RunState.get_mode_name()
+		mode_name = String(mode.get("display_name", mode.get("name", ""))).strip_edges()
+	if mode_name.is_empty():
+		mode_name = RunState.get_mode_name()
+	var clock := String(_result.get("mode_clock", "")).strip_edges()
+	if clock.is_empty():
+		clock = ContentDB.get_mode_clock(mode_id)
+	if clock.is_empty():
+		clock = String(mode.get("clock", ""))
+	var tag := String(_result.get("mode_tag", "")).strip_edges()
+	if tag.is_empty():
+		tag = String(mode.get("tag", "")).strip_edges()
 	var scale := float(_result.get("time_scale", 0.0))
 	if scale <= 0.0:
-		scale = 2.0 if (mode_id == &"quick" or mode_name.to_lower() == "quick") else 1.0
+		scale = float(mode.get("time_scale", 1.0))
+	var parts: PackedStringArray = [mode_name.to_upper()]
+	if not clock.is_empty():
+		parts.append(clock)
 	if scale > 1.0:
-		return "%s ×%.0f" % [mode_name.to_upper(), scale]
-	return mode_name.to_upper()
+		parts.append("×%.0f" % scale)
+	elif not tag.is_empty() and tag.to_upper() != "STANDARD":
+		parts.append(tag.to_upper())
+	return " · ".join(parts)
+
+
+func _mode_tooltip() -> String:
+	var mode_id := StringName(_result.get("mode_id", &""))
+	var mode := ContentDB.get_game_mode(mode_id)
+	var tag := String(_result.get("mode_tag", mode.get("tag", ""))).strip_edges()
+	var text := "Game mode and clock speed"
+	if not tag.is_empty():
+		text += " · " + tag
+	var description := String(mode.get("description", "")).strip_edges()
+	if not description.is_empty():
+		text += "\n" + description
+	return text
 
 
 func _meta(icon_name: StringName, value_text: String, tooltip: String, accent: Color) -> HBoxContainer:
@@ -375,7 +421,17 @@ func _actions_row() -> HBoxContainer:
 	redeploy.custom_minimum_size = Vector2(0, 48)
 	redeploy.tooltip_text = "Drop again with the same contract, difficulty and mode."
 	redeploy.pressed.connect(_on_redeploy)
-	row.add_child(redeploy)
+	if not bool(_result.get("tutorial", false)):
+		row.add_child(redeploy)
+	else:
+		var replay := UIFactory.secondary_button("Replay Training", &"training")
+		replay.custom_minimum_size = Vector2(0, 48)
+		replay.tooltip_text = "Run Field Training again from the main menu."
+		replay.pressed.connect(func() -> void:
+			if App != null:
+				App.start_tutorial()
+		)
+		row.add_child(replay)
 	row.add_child(UIFactory.spacer_h())
 	var menu := UIFactory.ghost_button("Main Menu")
 	menu.pressed.connect(_on_main_menu)
@@ -399,7 +455,7 @@ func _on_redeploy() -> void:
 	var threat := maxi(1, int(_result.get("threat", 1)))
 	var difficulty_id := StringName(_result.get("difficulty_id", &""))
 	var mode_id := StringName(_result.get("mode_id", &"normal"))
-	if not (mode_id in [&"normal", &"quick"]):
+	if ContentDB.get_game_mode(mode_id).is_empty():
 		mode_id = &"normal"
 	App.start_deployment(contract_id, 0, threat, [], difficulty_id, mode_id)
 

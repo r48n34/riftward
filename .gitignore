@@ -6,6 +6,8 @@
 *.log
 _*.log
 tests/artifacts/logs/
+tests/artifacts/*.txt
+tests/.appdata/
 ui/_boot.log
 ui/_import.log
 /build/
@@ -27,3 +29,6 @@ desktop.ini
 *.bak
 *.orig
 *.rej
+
+# Agent team session state (local only)
+.agent-teams/

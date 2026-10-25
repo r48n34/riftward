@@ -20,6 +20,12 @@ func _ready() -> void:
 	_world = WorldBuilderScript.new()
 	_world.name = "World"
 	add_child(_world)
+	# Exercise the full planet/fluid/weather preset path (the default frontier
+	# without a preset stays available for the standalone preview).
+	if ContentDB != null:
+		var preset: Dictionary = ContentDB.get_map_preset(&"verdant_verge")
+		if not preset.is_empty():
+			_world.apply_preset(preset)
 	_world.generation_progress.connect(_on_progress)
 	_world.generation_finished.connect(_on_finished)
 	var timeout := _make_timeout()
@@ -102,10 +108,11 @@ func _validate() -> Array[String]:
 
 	# --- POIs -----------------------------------------------------------------
 	var pois: Array = _world.get_pois()
-	if pois.size() != 16:
-		errors.append("get_pois() returned %d entries, expected 16" % pois.size())
+	if pois.size() < 17:
+		errors.append("get_pois() returned %d entries, expected >= 17" % pois.size())
 	var type_counts: Dictionary = {}
 	var biomes: Dictionary = {}
+	var interior_count := 0
 	for i in pois.size():
 		var poi: Dictionary = pois[i]
 		for key in ["position", "type", "name", "radius"]:
@@ -122,15 +129,57 @@ func _validate() -> Array[String]:
 		type_counts[type] = int(type_counts.get(type, 0)) + 1
 		var pos: Vector3 = poi["position"]
 		biomes[_world.get_biome_at(Vector2(pos.x, pos.z))] = true
+		if not (poi.get("interior", {}) as Dictionary).is_empty():
+			interior_count += 1
 	for required in [
 		"faction_camp", "relay_spire", "crash_site", "vault", "warden_outpost",
 		"anomaly", "ruin_field", "ashen_stockade", "bloom_hive", "choir_post",
-		"colony_ruins", "exfil_pad",
+		"colony_ruins", "derelict_ship", "exfil_pad",
 	]:
 		if not type_counts.has(required) or int(type_counts[required]) < 1:
 			errors.append("POI type '%s' missing from layout" % required)
 	if biomes.size() < 2:
 		errors.append("POIs only landed in %d biome(s); expected at least 2" % biomes.size())
+	if interior_count < 4:
+		errors.append("only %d POIs expose enterable interiors; expected >= 4" % interior_count)
+	if _world.get_biome_names().size() != 3:
+		errors.append("get_biome_names() did not return 3 planet biome names")
+
+	# --- fluid basins ---------------------------------------------------------
+	var basins: Array = _world.get_fluid_basins()
+	if basins.is_empty():
+		errors.append("world generated no fluid basins")
+	if _world.get_fluid_root() == null:
+		errors.append("fluid root missing")
+	var fluid_meshes := 0
+	if _world.get_fluid_root() != null:
+		for child in _world.get_fluid_root().get_children():
+			if child is MeshInstance3D:
+				fluid_meshes += 1
+	if basins.size() > 0 and fluid_meshes == 0:
+		errors.append("fluid basins exist but no fluid surface meshes were built")
+	for basin in basins:
+		var center: Vector2 = basin.get("center", Vector2.ZERO)
+		var sample: Dictionary = _world.sample_fluid(center)
+		if int(sample.get("type", 0)) == 0:
+			errors.append("sample_fluid() found no fluid at basin centre %s" % str(center))
+			break
+
+	# --- environment systems --------------------------------------------------
+	if _world.get_environment_director() == null:
+		errors.append("environment director missing")
+	if _world.get_day_night_cycle() == null:
+		errors.append("day/night cycle missing")
+	if _world.get_weather_system() == null:
+		errors.append("weather system missing")
+	if _world.get_day_night_cycle() != null:
+		var clock := String(_world.get_day_night_cycle().call("get_clock_text"))
+		if clock.length() != 5:
+			errors.append("day/night clock text malformed: '%s'" % clock)
+	if _world.get_weather_system() != null:
+		var weather: Dictionary = _world.get_weather_system().call("get_state")
+		if String(weather.get("display_name", "")).is_empty():
+			errors.append("weather system has no active state")
 
 	# --- terrain --------------------------------------------------------------
 	var heights: Array[float] = []
@@ -180,8 +229,8 @@ func _validate() -> Array[String]:
 	var structures_root: Node3D = _world.get_structures_root()
 	if structures_root == null:
 		errors.append("structures root missing")
-	elif structures_root.get_child_count() < 28:
-		errors.append("structures root has %d children, expected >= 28 (16 POIs + 2 drop zones + roadside)" % structures_root.get_child_count())
+	elif structures_root.get_child_count() < 30:
+		errors.append("structures root has %d children, expected >= 30 (17 POIs + 2 drop zones + roadside)" % structures_root.get_child_count())
 	var scatter_root: Node3D = _world.get_scatter_root()
 	if scatter_root == null:
 		errors.append("scatter root missing")

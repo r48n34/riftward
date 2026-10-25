@@ -125,7 +125,7 @@ func show_hub() -> void:
 	show_screen(&"hub", {})
 
 
-func show_loading(title: String, progress: float = 0.0) -> void:
+func show_loading(title: String, progress: float = 0.0, brief: Dictionary = {}) -> void:
 	_clear_hud()
 	_hide_results()
 	_hide_pause()
@@ -133,7 +133,7 @@ func show_loading(title: String, progress: float = 0.0) -> void:
 	_screen_host.visible = false
 	_ensure_loading()
 	if _loading != null and _loading.has_method("present"):
-		_loading.call("present", title, progress)
+		_loading.call("present", title, progress, brief)
 
 
 func update_loading(progress: float, label: String) -> void:
@@ -144,6 +144,10 @@ func update_loading(progress: float, label: String) -> void:
 func hide_loading() -> void:
 	if _loading != null and _loading.has_method("dismiss"):
 		_loading.call("dismiss")
+
+
+func get_loading_screen() -> Node:
+	return _loading
 
 
 func show_deployment_hud(player: Node) -> void:

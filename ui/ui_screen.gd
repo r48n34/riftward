@@ -13,6 +13,7 @@ var _built := false
 var _nav_rail: UINavRail = null
 var _page_margin: MarginContainer = null
 var _focus_on_next_build := true
+var _saved_scroll_offsets: Array[Vector2i] = []
 
 
 func _ready() -> void:
@@ -39,6 +40,10 @@ func exit() -> void:
 func refresh() -> void:
 	if not visible:
 		return
+	if preserve_scroll_on_refresh():
+		_capture_scroll_positions()
+	else:
+		_saved_scroll_offsets.clear()
 	_rebuild()
 
 
@@ -60,9 +65,12 @@ func _rebuild() -> void:
 	_built = true
 	_on_viewport_resized()
 	_restore_focus(focus_owner)
-	# Focus inside a ScrollContainer scrolls it; snap to the top on (re)build.
-	# Two passes are needed because Godot applies focus scrolling on the next frame.
-	_reset_scroll_positions()
+	if preserve_scroll_on_refresh():
+		_restore_scroll_positions()
+	else:
+		# Focus inside a ScrollContainer scrolls it; snap to the top on (re)build.
+		# Two passes are needed because Godot applies focus scrolling on the next frame.
+		_reset_scroll_positions()
 
 
 func _reset_scroll_positions() -> void:
@@ -81,6 +89,38 @@ func _apply_scroll_reset() -> void:
 			continue
 		scroll.scroll_vertical = 0
 		scroll.scroll_horizontal = 0
+
+
+func _capture_scroll_positions() -> void:
+	_saved_scroll_offsets.clear()
+	for node in find_children("*", "ScrollContainer", true, false):
+		var scroll := node as ScrollContainer
+		if scroll == null:
+			continue
+		_saved_scroll_offsets.append(Vector2i(scroll.scroll_horizontal, scroll.scroll_vertical))
+
+
+func _restore_scroll_positions() -> void:
+	await get_tree().process_frame
+	_apply_scroll_restore()
+	await get_tree().process_frame
+	_apply_scroll_restore()
+	_saved_scroll_offsets.clear()
+
+
+func _apply_scroll_restore() -> void:
+	if not is_inside_tree():
+		return
+	var index := 0
+	for node in find_children("*", "ScrollContainer", true, false):
+		var scroll := node as ScrollContainer
+		if scroll == null:
+			continue
+		if index < _saved_scroll_offsets.size():
+			var offset := _saved_scroll_offsets[index]
+			scroll.scroll_horizontal = offset.x
+			scroll.scroll_vertical = offset.y
+		index += 1
 
 
 func _clear_root() -> void:
@@ -144,6 +184,13 @@ func _on_viewport_resized() -> void:
 
 
 # --- Overridables -----------------------------------------------------------
+
+## Screens with long scrollable content override this so background refreshes
+## (profile changes, timer updates) don't throw the player back to the top.
+## Off by default: every other screen keeps its existing rebuild/reset behaviour.
+func preserve_scroll_on_refresh() -> bool:
+	return false
+
 
 func _compose() -> void:
 	pass

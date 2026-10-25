@@ -17,6 +17,7 @@ var threat: int = 1
 var mutators: Array = []
 var difficulty_id: StringName = &""
 var game_mode: StringName = &"normal"
+var map_id: StringName = &""
 var player: Player = null
 var world = null
 var started: bool = false
@@ -58,10 +59,26 @@ var _mission_trackers: Array = []
 var _staging_timer: float = 1.0
 var _prune_timer: float = 5.0
 var _map_preset: Dictionary = {}
+var _dungeon_entries: Array[Dictionary] = []
+var _dungeon_root: Node3D = null
+var _in_dungeon: bool = false
+var _active_dungeon: Node = null
+var _dungeon_return_position := Vector3.ZERO
+var _dungeon_cleared: int = 0
+var _tutorial_director: Node = null
+var _staged_contract: bool = false
+var _stage_index: int = 0
+var _stage_sites: Array = []
+var _stage_sites_completed: int = 0
+var _used_poi_indices: Dictionary = {}
 
 const LOOT_CACHE_SCRIPT: Script = preload("res://features/run/loot_cache.gd")
 const WORLD_MARKER_SCRIPT: Script = preload("res://features/run/world_marker.gd")
 const EXTRACTION_SHIP_SCRIPT: Script = preload("res://features/run/extraction_ship.gd")
+const DUNGEON_RUNTIME_SCRIPT: Script = preload("res://features/dungeon/dungeon_runtime.gd")
+const DUNGEON_ENTRANCE_SCRIPT: Script = preload("res://features/dungeon/dungeon_entrance.gd")
+const TRAINING_TARGET_SCRIPT: Script = preload("res://features/tutorial/training_target.gd")
+const TUTORIAL_DIRECTOR_SCRIPT: Script = preload("res://features/tutorial/tutorial_director.gd")
 
 const MAX_ACTIVE_HOSTILES: int = 48
 const DIRECTOR_GRACE: float = 40.0
@@ -71,25 +88,22 @@ const HOSTILE_PRUNE_RADIUS: float = 300.0
 const MAX_LOOT_CACHES: int = 24
 const CACHE_SITE_CLEARANCE: float = 22.0
 const ENDGAME_EVENTS: Array[Dictionary] = [
-	{"fraction": 0.58, "id": &"hunter_pack", "title": "Hunter Pack", "text": "A pack of hunters just caught your scent. They are moving fast."},
-	{"fraction": 0.72, "id": &"rift_incursion", "title": "Rift Incursion", "text": "Reality tears open nearby. Something ancient steps through."},
-	{"fraction": 0.86, "id": &"collapse_surge", "title": "Collapse Surge", "text": "The Collapse is accelerating. Heavy signatures converge on your position."},
-	{"fraction": 0.94, "id": &"final_stand", "title": "Final Stand", "text": "This is the last pressure wave. Survive it and leave."},
+	{"fraction": 0.58, "id": &"hunter_pack", "title": "Hunter Pack", "icon": &"paw", "color": Color("ffb866"),
+		"text": "A pack of hunters just caught your scent. They are moving fast."},
+	{"fraction": 0.72, "id": &"rift_incursion", "title": "Rift Incursion", "icon": &"bolt", "color": Color("c79cff"),
+		"text": "Reality tears open nearby. Something ancient steps through."},
+	{"fraction": 0.86, "id": &"collapse_surge", "title": "Collapse Surge", "icon": &"warning", "color": Color("ff6e6e"),
+		"text": "The Collapse is accelerating. Heavy signatures converge on your position."},
+	{"fraction": 0.94, "id": &"final_stand", "title": "Final Stand", "icon": &"skull", "color": Color("ff6e6e"),
+		"text": "This is the last pressure wave. Survive it and leave."},
 ]
 
-const WORLD_EVENTS: Array[Dictionary] = [
-	{"id": &"supply_drop", "title": "Supply Drop", "text": "A Kestrel drop pod just punched through the canopy. Grab it before someone else does."},
-	{"id": &"wandering_elite", "title": "Wandering Elite", "text": "A command signature is moving through the Reach. It has noticed you."},
-	{"id": &"faction_skirmish", "title": "Faction Skirmish", "text": "Ashen and Bloom are tearing into each other nearby. Use the noise."},
-	{"id": &"rift_surge", "title": "Rift Surge", "text": "Reality shudders. A fragment of the Reach attaches itself to your suit."},
-	{"id": &"black_market", "title": "Black Market Drone", "text": "A courier drone pings your channel and drops salvage for a favour you will never understand."},
-	{"id": &"cache_beacon", "title": "Cache Beacon", "text": "An old colony beacon is broadcasting a cache location."},
-	{"id": &"lost_caravan", "title": "Lost Caravan", "text": "A caravan signal is fading. The cargo is still there."},
-	{"id": &"jammer_field", "title": "Jammer Field", "text": "Choir nullifiers are drowning the valley in static. Cut them out."},
-	{"id": &"sudden_fog", "title": "Sudden Fog", "text": "A dust front rolls in. Contact ranges collapse."},
-	{"id": &"bloom_bloom", "title": "Bloom Bloom", "text": "The ground is breathing. The Bloom is spawning around you."},
-	{"id": &"supply_convoy", "title": "Supply Convoy", "text": "A convoy is pinned down nearby. Breach the cargo before the Ashen regroup."},
-	{"id": &"rift_echo", "title": "Rift Echo", "text": "Your suit picks up an echo of itself. Something on the other side is listening."},
+## Run-relative windows (fraction of RunState.get_run_duration()) used to
+## schedule the three weighted world events.
+const WORLD_EVENT_WINDOWS: Array[Vector2] = [
+	Vector2(0.14, 0.26),
+	Vector2(0.38, 0.55),
+	Vector2(0.64, 0.82),
 ]
 
 
@@ -99,7 +113,8 @@ func setup(
 	p_threat: int = 1,
 	p_mutators: Array = [],
 	p_difficulty_id: StringName = &"",
-	p_mode_id: StringName = &"normal"
+	p_mode_id: StringName = &"normal",
+	p_map_id: StringName = &""
 ) -> void:
 	contract_id = p_contract_id
 	seed_value = p_seed
@@ -107,12 +122,13 @@ func setup(
 	mutators = p_mutators.duplicate()
 	difficulty_id = p_difficulty_id
 	game_mode = p_mode_id
+	map_id = p_map_id
 	call_deferred("_start_deployment")
 
 
 func _start_deployment() -> void:
 	_rng.seed = seed_value if seed_value != 0 else randi()
-	RunState.start_run(contract_id, seed_value, threat, mutators, difficulty_id, game_mode)
+	RunState.start_run(contract_id, seed_value, threat, mutators, difficulty_id, game_mode, map_id)
 	game_mode = RunState.mode_id
 	threat = RunState.threat
 	_rng.seed = RunState.run_seed
@@ -131,23 +147,30 @@ func _start_deployment() -> void:
 		progress_changed.emit(0.55, "Rift interference — deploying fallback terrain")
 		_build_fallback_world()
 	_cache_world_data()
+	_apply_mode_environment()
 	_spawn_poi_markers()
+	progress_changed.emit(0.76, "Opening the under-reach")
+	await _prepare_dungeons()
 	progress_changed.emit(0.78, "Printing drop pod")
 	_spawn_player()
 	if not is_instance_valid(player):
 		push_error("[Deployment] Player spawn failed.")
 		return
 	progress_changed.emit(0.84, "Waking Wardens")
-	_spawn_squad()
+	if not RunState.is_tutorial():
+		_spawn_squad()
 	progress_changed.emit(0.9, "Mapping hostiles")
 	_prepare_scripts()
-	_setup_contract()
-	_spawn_world_enemies()
-	progress_changed.emit(0.96, "Calibrating exfil")
-	_setup_extraction()
-	_setup_shrine()
-	_setup_side_objectives()
-	_schedule_world_events()
+	if RunState.is_tutorial():
+		_setup_tutorial()
+	else:
+		_setup_contract()
+		_spawn_world_enemies()
+		progress_changed.emit(0.96, "Calibrating exfil")
+		_setup_extraction()
+		_setup_shrine()
+		_setup_side_objectives()
+		_schedule_world_events()
 	await get_tree().physics_frame
 	await get_tree().physics_frame
 	if player != null:
@@ -161,6 +184,21 @@ func _start_deployment() -> void:
 		"Reach the objectives, loot the dead, and call exfil before the Collapse.",
 		&"success"
 	)
+
+
+## Applies mode-authored environment overrides after world generation: the
+## Blackout night insertion start time and any forced starting weather.
+func _apply_mode_environment() -> void:
+	if world == null or not is_instance_valid(world):
+		return
+	var start_time := RunState.get_mode_start_time()
+	if start_time >= 0.0 and world.has_method("get_day_night_cycle"):
+		var cycle = world.call("get_day_night_cycle")
+		if cycle != null and is_instance_valid(cycle) and cycle.has_method("set_time_of_day"):
+			cycle.call("set_time_of_day", start_time)
+	var start_weather := RunState.get_mode_start_weather()
+	if start_weather != &"":
+		_force_world_weather(start_weather)
 
 
 func _cache_world_data() -> void:
@@ -181,6 +219,233 @@ func _cache_world_data() -> void:
 				"radius": 20.0,
 			})
 			fallback_index += 1
+
+
+# ---------------------------------------------------------------------------
+# Field training
+# ---------------------------------------------------------------------------
+
+func _setup_tutorial() -> void:
+	progress_changed.emit(0.92, "Field training")
+	var forward: Vector3 = player.call("get_forward")
+	var flat := Vector3(forward.x, 0.0, forward.z)
+	if flat.length_squared() < 0.01:
+		flat = -player.global_transform.basis.z
+		flat.y = 0.0
+	flat = flat.normalized()
+	var right := flat.cross(Vector3.UP)
+	if right.length_squared() < 0.01:
+		right = Vector3.RIGHT
+	right = right.normalized()
+	var targets: Array[Node] = []
+	for i in 2:
+		var target = TRAINING_TARGET_SCRIPT.new()
+		if not (target is Node3D):
+			continue
+		_actors_root.add_child(target)
+		var side := 3.0 if i == 0 else -3.5
+		var point := _spawn_position + flat * (10.0 + float(i) * 3.0) + right * side
+		point.y = _ground_position(point).y
+		(target as Node3D).global_position = point
+		(target as Node3D).rotation.y = atan2(flat.x, flat.z)
+		targets.append(target)
+	var cache = LOOT_CACHE_SCRIPT.new()
+	if cache is Node3D:
+		_site_root.add_child(cache)
+		var cache_position := _ground_position(_spawn_position + right * 7.0 + flat * 4.0)
+		cache.call("setup", &"tutorial_cache", cache_position, null, _build_cache_payload())
+	var beacon := ExtractionBeacon.new()
+	beacon.name = "TrainingExfil"
+	_site_root.add_child(beacon)
+	var beacon_position := _ground_position(_spawn_position + flat * 55.0)
+	beacon.setup(self, beacon_position, "Training Exfil")
+	_exfil_sites.append(beacon)
+	_tutorial_director = TUTORIAL_DIRECTOR_SCRIPT.new()
+	_tutorial_director.name = "TutorialDirector"
+	add_child(_tutorial_director)
+	_tutorial_director.call("setup", self, player, targets, cache, beacon)
+	EventBus.radio_message.emit("Mara Voss", "Field training. Move, shoot, cast, loot, then call exfil.")
+	EventBus.notification_requested.emit("FIELD TRAINING", "Complete five stages to finish onboarding. Pause to skip.", &"info")
+
+
+func get_tutorial_director() -> Node:
+	return _tutorial_director
+
+
+# ---------------------------------------------------------------------------
+# Under-reach dungeons
+# ---------------------------------------------------------------------------
+
+## Pre-generates 2-3 themed dungeons during the loading screen so entering one is
+## instant. Entrances are placed at the POI dungeon anchors produced by the world
+## builder; the instances themselves live far below/away from the surface world.
+func _prepare_dungeons() -> void:
+	_dungeon_entries.clear()
+	if world == null or not world.has_method("get_pois"):
+		return
+	var planet := ContentDB.get_planet(RunState.planet_id)
+	var theme_ids: Array = planet.get("dungeon_themes", [])
+	var candidates: Array = []
+	for i in _poi_cache.size():
+		var poi: Dictionary = _poi_cache[i]
+		var anchor = poi.get("dungeon_anchor", null)
+		if anchor is Vector3:
+			candidates.append({"index": i, "poi": poi, "anchor": anchor})
+	if candidates.is_empty():
+		return
+	# Deterministic shuffle so a seed always yields the same entrance set.
+	for i in range(candidates.size() - 1, 0, -1):
+		var j := _rng.randi_range(0, i)
+		var swap: Dictionary = candidates[i]
+		candidates[i] = candidates[j]
+		candidates[j] = swap
+	_dungeon_root = Node3D.new()
+	_dungeon_root.name = "Dungeons"
+	add_child(_dungeon_root)
+	var count := mini(3, candidates.size())
+	for k in count:
+		var candidate: Dictionary = candidates[k]
+		var theme_id: StringName = &"rift_vault"
+		if not theme_ids.is_empty():
+			theme_id = StringName(theme_ids[k % theme_ids.size()])
+		var theme: Dictionary = ContentDB.get_dungeon_theme(theme_id)
+		if theme.is_empty():
+			continue
+		var runtime = DUNGEON_RUNTIME_SCRIPT.new()
+		if not (runtime is Node):
+			continue
+		runtime.name = "DungeonRuntime_%d" % k
+		_dungeon_root.add_child(runtime)
+		runtime.call("setup", self, theme, threat, k)
+		var origin := Vector3(4200.0 + float(k) * 340.0, -620.0, 0.0)
+		var built: bool = runtime.call("build", RunState.run_seed + k * 7919, origin)
+		if not built:
+			runtime.queue_free()
+			continue
+		var anchor: Vector3 = candidate["anchor"]
+		var entrance = DUNGEON_ENTRANCE_SCRIPT.new()
+		if not (entrance is Node3D):
+			runtime.queue_free()
+			continue
+		entrance.name = "DungeonEntrance_%d" % k
+		_site_root.add_child(entrance)
+		entrance.call(
+			"setup", self, k,
+			String(theme.get("display_name", "Rift Vault")),
+			anchor + Vector3(0.0, 0.2, 0.0),
+			theme.get("accent", Color("c79cff"))
+		)
+		_dungeon_entries.append({
+			"index": k,
+			"entrance": entrance,
+			"runtime": runtime,
+			"position": entrance.global_position,
+			"name": String(theme.get("display_name", "Rift Vault")),
+			"theme": theme,
+		})
+		await get_tree().process_frame
+	progress_changed.emit(0.77, "Under-reach mapped")
+
+
+func enter_dungeon(entrance: Node) -> void:
+	if _in_dungeon or ending or not is_instance_valid(player):
+		return
+	if entrance == null or not is_instance_valid(entrance):
+		return
+	var entry: Dictionary = {}
+	for candidate in _dungeon_entries:
+		if candidate.get("entrance") == entrance:
+			entry = candidate
+			break
+	if entry.is_empty():
+		return
+	_active_dungeon = entry["runtime"]
+	_dungeon_return_position = (entrance as Node3D).global_position + Vector3.UP * 0.8
+	_in_dungeon = true
+	RunState.record_dungeon_entered()
+	if companion_manager != null and companion_manager.has_method("set_suspended"):
+		companion_manager.call("set_suspended", true, _dungeon_return_position)
+	_set_indoor(true)
+	var start: Vector3 = _active_dungeon.call("enter", player)
+	player.call("teleport_to", start + Vector3.UP * 0.25)
+	EventBus.dungeon_state_changed.emit(true, String(entry.get("name", "Under-Reach")))
+	EventBus.notification_requested.emit("UNDER-REACH", "%s. Find the guardian." % String(entry.get("name", "Rift Vault")), &"rift")
+	EventBus.radio_message.emit("Waystation Kestrel", "Signal lost. You are under the Reach now.")
+	AudioDirector.play_sfx(&"door", -4.0)
+	_complete_dungeon_stage(&"dungeon")
+
+
+func exit_dungeon() -> void:
+	if not _in_dungeon:
+		return
+	if _active_dungeon != null and is_instance_valid(_active_dungeon):
+		_active_dungeon.call("leave")
+	_in_dungeon = false
+	_active_dungeon = null
+	_set_indoor(false)
+	if is_instance_valid(player):
+		player.call("teleport_to", _dungeon_return_position)
+	if companion_manager != null and companion_manager.has_method("set_suspended"):
+		companion_manager.call("set_suspended", false)
+	EventBus.dungeon_state_changed.emit(false, "")
+	EventBus.notification_requested.emit("SURFACE", "Back in the Reach. The clock is still running.", &"success")
+
+
+func _set_indoor(value: bool) -> void:
+	if world != null and world.has_method("get_environment_director"):
+		var director = world.call("get_environment_director")
+		if director != null and is_instance_valid(director):
+			director.call("set_indoor", value)
+
+
+func register_boss(enemy: Node) -> void:
+	_register_boss(enemy)
+
+
+func build_dungeon_cache_payload() -> Dictionary:
+	return _build_cache_payload()
+
+
+func on_dungeon_boss_defeated(runtime: Node) -> void:
+	_dungeon_cleared += 1
+	RunState.record_dungeon_cleared()
+	for entry in _dungeon_entries:
+		if entry.get("runtime") == runtime:
+			var entrance = entry.get("entrance")
+			if entrance != null and is_instance_valid(entrance) and entrance.has_method("set_cleared"):
+				entrance.call("set_cleared", true)
+	EventBus.notification_requested.emit("UNDER-REACH CLEARED", "The guardian is down. Loot the chamber and return to the surface.", &"success")
+	EventBus.radio_message.emit("Waystation Kestrel", "Guardian down. That is a payday if you walk out with it.")
+	_complete_dungeon_stage(&"dungeon_boss")
+
+
+func is_in_dungeon() -> bool:
+	return _in_dungeon
+
+
+func get_active_dungeon() -> Node:
+	return _active_dungeon
+
+
+func get_dungeon_name() -> String:
+	if _active_dungeon != null and is_instance_valid(_active_dungeon):
+		return String(_active_dungeon.call("get_display_name"))
+	return ""
+
+
+func get_dungeon_entries() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	out.assign(_dungeon_entries)
+	return out
+
+
+func get_dungeon_entrances() -> Array[Node]:
+	var out: Array[Node] = []
+	for entry in _dungeon_entries:
+		var entrance = entry.get("entrance")
+		if entrance != null and is_instance_valid(entrance):
+			out.append(entrance)
+	return out
 
 
 func _prepare_scripts() -> void:
@@ -386,6 +651,10 @@ func _setup_contract() -> void:
 		return
 	var site_type: StringName = StringName(contract.objective_types[0]) if not contract.objective_types.is_empty() else &"cache"
 	_contract_label = contract.objective_label
+	_staged_contract = false
+	if contract.is_staged():
+		_setup_staged_contract(contract)
+		return
 	var candidates := _objective_candidates()
 	var wanted := RunState.get_difficulty_mission_sites()
 	var mission_count := mini(wanted, candidates.size())
@@ -401,6 +670,86 @@ func _setup_contract() -> void:
 		_objective_sites.append(site)
 		_spawn_guards_around(pos, guard_count, i % 2)
 	EventBus.radio_message.emit("Contract", contract.flavor)
+
+
+func _setup_staged_contract(contract: ContractData) -> void:
+	_staged_contract = true
+	_stage_index = 0
+	_stage_sites.clear()
+	_stage_sites_completed = 0
+	_used_poi_indices.clear()
+	RunState.add_objective(&"contract", contract.objective_label, contract.stages.size())
+	RunState.set_stage(0, contract.stages.size(), String(contract.stages[0].get("title", contract.objective_label)))
+	EventBus.radio_message.emit("Contract", contract.flavor)
+	_spawn_stage_sites(contract.stages[0])
+
+
+func _spawn_stage_sites(stage: Dictionary) -> void:
+	_stage_sites.clear()
+	_stage_sites_completed = 0
+	var stage_type := StringName(stage.get("type", &"cache"))
+	var count := maxi(1, int(stage.get("count", 1)))
+	_contract_label = String(stage.get("title", stage.get("label", "Objective")))
+	RunState.set_stage(_stage_index, RunState.stage_total, _contract_label)
+	if stage_type == &"dungeon" or stage_type == &"dungeon_boss":
+		EventBus.notify(
+			"STAGE %d/%d" % [_stage_index + 1, RunState.stage_total],
+			"Find an under-reach hatch and descend.",
+			&"rift"
+		)
+		return
+	var candidates := _objective_candidates()
+	var guard_count := RunState.get_difficulty_objective_guards()
+	var spawned := 0
+	for poi in candidates:
+		if spawned >= count:
+			break
+		var index := int(poi.get("_index", -1))
+		if _used_poi_indices.has(index):
+			continue
+		_used_poi_indices[index] = true
+		var pos: Vector3 = poi.get("position", _spawn_position) + Vector3(0.0, 0.1, 0.0)
+		var site := ObjectiveSite.new()
+		site.name = "StageSite_%d_%d" % [_stage_index, spawned]
+		_site_root.add_child(site)
+		site.setup(&"stage_%d_%d" % [_stage_index, spawned], _contract_label, stage_type, pos, self, Color("62e6c3"))
+		_objective_sites.append(site)
+		_stage_sites.append(site)
+		_spawn_guards_around(pos, guard_count, spawned % 2)
+		spawned += 1
+	EventBus.notify(
+		"STAGE %d/%d" % [_stage_index + 1, RunState.stage_total],
+		_contract_label,
+		&"success"
+	)
+
+
+func _advance_contract_stage() -> void:
+	var contract := ContentDB.get_contract(contract_id)
+	if contract == null:
+		return
+	_stage_index += 1
+	if _stage_index >= contract.stages.size():
+		_contract_label = contract.objective_label
+		EventBus.notify("CONTRACT COMPLETE", "Every stage is secured. Call exfil when ready.", &"success")
+		EventBus.radio_message.emit("Waystation Kestrel", "Operation complete. Bring it home.")
+		return
+	var stage: Dictionary = contract.stages[_stage_index]
+	_spawn_stage_sites(stage)
+
+
+func _complete_dungeon_stage(kind: StringName) -> void:
+	if not _staged_contract:
+		return
+	var contract := ContentDB.get_contract(contract_id)
+	if contract == null or _stage_index >= contract.stages.size():
+		return
+	var stage: Dictionary = contract.stages[_stage_index]
+	if StringName(stage.get("type", &"")) != kind:
+		return
+	RunState.progress_objective(&"contract", 1)
+	_objectives_completed += 1
+	_advance_contract_stage()
 
 
 func _objective_candidates() -> Array[Dictionary]:
@@ -591,23 +940,62 @@ func on_cache_opened(cache: Node, _player: Node) -> void:
 
 
 func _schedule_world_events() -> void:
-	var indices: Array[int] = []
-	while indices.size() < 2:
-		var candidate := _rng.randi_range(0, WORLD_EVENTS.size() - 1)
-		if candidate not in indices:
-			indices.append(candidate)
-	var times: Array[float] = [
-		_rng.randf_range(140.0, 300.0),
-		_rng.randf_range(470.0, 700.0),
-	]
-	times.sort()
-	for i in indices.size():
+	var events: Array = ContentDB.get_world_events()
+	if events.is_empty():
+		return
+	var duration := maxf(60.0, RunState.get_run_duration())
+	_scheduled_events.clear()
+	_event_cursor = 0
+	var used: Dictionary = {}
+	for window in WORLD_EVENT_WINDOWS:
+		var event := _pick_weighted_world_event(events, used)
+		if event.is_empty():
+			break
+		var fraction := _rng.randf_range(window.x, window.y)
 		_scheduled_events.append({
-			"event": WORLD_EVENTS[indices[i]],
-			"time": times[i],
+			"event": event,
+			"time": clampf(fraction * duration, 1.0, maxf(1.0, duration - 30.0)),
 		})
-	_event_timer = times[0]
-	EventBus.notification_requested.emit("The Reach is moving", "Two anomalous signatures detected on long-range telemetry.", &"info")
+	_scheduled_events.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a.get("time", 0.0)) < float(b.get("time", 0.0))
+	)
+	_event_timer = float(_scheduled_events[0].get("time", 0.0)) if not _scheduled_events.is_empty() else 0.0
+	EventBus.notification_requested.emit(
+		"The Reach is moving",
+		"%d anomalous signatures detected on long-range telemetry." % _scheduled_events.size(),
+		&"info"
+	)
+
+
+## Picks a distinct, weight-biased world event. `used` maps event indexes that
+## have already been scheduled this run.
+func _pick_weighted_world_event(events: Array, used: Dictionary) -> Dictionary:
+	var total := 0.0
+	for i in events.size():
+		if used.has(i) or not (events[i] is Dictionary):
+			continue
+		total += maxf(0.05, float((events[i] as Dictionary).get("weight", 1)))
+	if total <= 0.0:
+		return {}
+	var roll := _rng.randf_range(0.0, total)
+	var last_index := -1
+	for i in events.size():
+		if used.has(i) or not (events[i] is Dictionary):
+			continue
+		last_index = i
+		var event: Dictionary = events[i]
+		roll -= maxf(0.05, float(event.get("weight", 1)))
+		if roll <= 0.0:
+			used[i] = true
+			return event
+	if last_index >= 0:
+		used[last_index] = true
+		return events[last_index]
+	return {}
+
+
+func _has_player() -> bool:
+	return player != null and is_instance_valid(player)
 
 
 func _trigger_world_event(entry: Dictionary) -> void:
@@ -615,7 +1003,9 @@ func _trigger_world_event(entry: Dictionary) -> void:
 	var event_id: StringName = event.get("id", &"")
 	var title := String(event.get("title", "World Event"))
 	var text := String(event.get("text", ""))
-	EventBus.world_event.emit(title, text)
+	var icon := StringName(event.get("icon", &"target"))
+	var color: Color = event.get("color", Color("62e6c3"))
+	EventBus.world_event.emit(title, text, icon, color)
 	EventBus.notification_requested.emit(title, text, &"info")
 	EventBus.radio_message.emit("Waystation Kestrel", text)
 	match event_id:
@@ -625,7 +1015,7 @@ func _trigger_world_event(entry: Dictionary) -> void:
 				_spawn_event_wave(&"ashen_scrapper", 2, 45.0)
 		&"wandering_elite":
 			var elites := _elite_pool()
-			if not elites.is_empty():
+			if not elites.is_empty() and _has_player():
 				var elite: EnemyData = elites[_rng.randi_range(0, elites.size() - 1)]
 				_spawn_enemy_at(elite, _offset_point(player.global_position, 65.0))
 		&"faction_skirmish":
@@ -651,9 +1041,71 @@ func _trigger_world_event(entry: Dictionary) -> void:
 		&"rift_echo":
 			_grant_rift_mod()
 			_spawn_event_wave(&"choir_wisp", 2, 58.0)
+		&"meteor_strike":
+			_force_world_weather(&"meteor_shower")
+			_spawn_event_wave(&"ashen_sapper", 2, 48.0)
+			_spawn_event_wave(&"ashen_hound", 2, 60.0)
+		&"rift_cyclone":
+			_force_world_weather(&"rift_cyclone")
+			_grant_rift_mod()
+		&"toxic_drift":
+			_force_world_weather(&"toxic_squall")
+			_spawn_event_wave(&"bloom_spitter", 2, 50.0)
+			_spawn_event_wave(&"bloom_lasher", 2, 62.0)
+		&"whiteout":
+			_force_world_weather(&"void_whiteout")
+			_spawn_event_wave(&"choir_wisp", 2, 48.0)
+			_spawn_event_wave(&"choir_sentinel", 1, 60.0)
+		&"scavenger_convoy":
+			_spawn_supply_site(title)
+			_spawn_event_wave(&"ashen_scrapper", 2, 46.0)
+			_spawn_event_wave(&"ashen_marksman", 1, 58.0)
+		&"bounty_broker":
+			_spawn_broker_bounty()
+		&"distress_beacon":
+			_spawn_supply_site(title)
+			EventBus.radio_message.emit("Mara Voss", "Distress signal logged. Kestrel says we are close enough.")
+		&"collapse_tremor":
+			_pull_collapse_forward()
+
+
+## Force a weather state on the generated world. Safe before/without a player
+## and when the fallback world has no weather system.
+func _force_world_weather(weather_id: StringName) -> bool:
+	if world == null or not is_instance_valid(world) or not world.has_method("get_weather_system"):
+		return false
+	var weather_node = world.call("get_weather_system")
+	if weather_node == null or not is_instance_valid(weather_node) or not weather_node.has_method("force_weather"):
+		return false
+	return bool(weather_node.call("force_weather", weather_id))
+
+
+func _spawn_broker_bounty() -> void:
+	if not _has_player():
+		return
+	var elite := _random_elite_data()
+	if elite == null:
+		return
+	var enemy := _spawn_at_player_distance(elite, 55.0)
+	if enemy == null:
+		return
+	if enemy.has_method("set_marked"):
+		enemy.call("set_marked", 240.0)
+	_bounty_targets.append(enemy)
+	EventBus.notification_requested.emit("Broker contract", "A marked elite is close. Kill it for the bounty.", &"danger")
+
+
+## Pulls the Collapse start forward by one minute without ever delaying it.
+func _pull_collapse_forward() -> void:
+	var storm_start := RunState.get_storm_start_time()
+	var pulled := maxf(RunState.elapsed + 30.0, storm_start - 60.0)
+	RunState.storm_start_time = minf(storm_start, pulled)
+	EventBus.notification_requested.emit("Collapse tremor", "The Collapse is closing in early. Get moving.", &"danger")
 
 
 func _spawn_event_wave(enemy_id: StringName, count: int, distance: float) -> void:
+	if not _has_player():
+		return
 	var data := ContentDB.get_enemy(enemy_id)
 	if data == null:
 		return
@@ -672,6 +1124,8 @@ func _offset_point(origin: Vector3, distance: float) -> Vector3:
 
 
 func _spawn_supply_site(title: String) -> void:
+	if not _has_player():
+		return
 	var point := _offset_point(player.global_position, _rng.randf_range(28.0, 38.0))
 	var site := ObjectiveSite.new()
 	site.name = "SupplyDrop"
@@ -883,7 +1337,11 @@ func _spawn_objective_target(site: ObjectiveSite) -> Node:
 		return null
 	var target_data: EnemyData
 	if site.site_type == &"vault":
-		target_data = ContentDB.get_enemy(&"the_warden") if _rng.randf() < 0.5 else ContentDB.get_enemy(&"bloomheart")
+		var bosses := ContentDB.get_boss_enemies()
+		if not bosses.is_empty():
+			target_data = bosses[_rng.randi_range(0, bosses.size() - 1)]
+		else:
+			target_data = ContentDB.get_enemy(&"the_warden")
 	else:
 		var elites := _elite_pool()
 		target_data = elites[_rng.randi_range(0, elites.size() - 1)] if not elites.is_empty() else null
@@ -897,10 +1355,22 @@ func _complete_objective_site(site: ObjectiveSite) -> void:
 	if site == null or site.completed:
 		return
 	site.mark_complete()
-	RunState.progress_objective(&"contract", 1)
 	_objectives_completed += 1
 	RunState.add_satchel_salvage(35 + threat * 15, 1 if threat >= 3 else 0)
 	_award_loot_drop(site.global_position + Vector3(0.0, 1.0, 0.0), 1 + threat / 2)
+	if _staged_contract:
+		_stage_sites_completed += 1
+		if _stage_sites_completed >= maxi(1, _stage_sites.size()):
+			RunState.progress_objective(&"contract", 1)
+			_advance_contract_stage()
+		else:
+			EventBus.notify(
+				"Stage progress",
+				"%d/%d secured — %s" % [_stage_sites_completed, _stage_sites.size(), _contract_label],
+				&"success"
+			)
+		return
+	RunState.progress_objective(&"contract", 1)
 	if RunState.is_objective_complete(&"contract"):
 		EventBus.notify("Objective secured", "Contract complete. Call exfil when you are ready to leave.", &"success")
 		EventBus.radio_message.emit("Waystation Kestrel", "Contract secured. That's a clean payday if you make it back.")
@@ -1019,6 +1489,9 @@ func _ground_position(point: Vector3) -> Vector3:
 # ---------------------------------------------------------------------------
 
 func request_extraction(_beacon: ExtractionBeacon) -> void:
+	if _in_dungeon:
+		EventBus.notification_requested.emit("No exfil underground", "Return to the surface before calling the dropship.", &"warning")
+		return
 	if RunState.extraction_state == &"holding" or not RunState.active:
 		return
 	var pad := _resolve_exfil_pad(_beacon)
@@ -1134,7 +1607,9 @@ func _update_endgame_events() -> void:
 func _trigger_endgame_event(event: Dictionary) -> void:
 	var title := String(event.get("title", "Reach Event"))
 	var text := String(event.get("text", ""))
-	EventBus.world_event.emit(title, text)
+	var icon := StringName(event.get("icon", &"warning"))
+	var color: Color = event.get("color", Color("ff6e6e"))
+	EventBus.world_event.emit(title, text, icon, color)
 	EventBus.notification_requested.emit(title, text, &"danger")
 	EventBus.radio_message.emit("Mara Voss", text)
 	AudioDirector.play_sfx(&"storm", -10.0)
@@ -1242,6 +1717,23 @@ func _process(delta: float) -> void:
 	if not started or ending:
 		return
 	RunState.tick(delta)
+	if _in_dungeon:
+		# The under-reach is a sealed encounter space: the run clock keeps
+		# ticking, but the surface director, storm and garrison staging pause.
+		_compass_timer -= delta
+		if _compass_timer <= 0.0:
+			_compass_timer = 0.5
+			_update_compass_markers()
+		return
+	if RunState.is_tutorial():
+		# Training has no storm, director, world events or hostile population.
+		_compass_timer -= delta
+		if _compass_timer <= 0.0:
+			_compass_timer = 0.5
+			_update_compass_markers()
+		if RunState.extraction_state == &"holding":
+			RunState.tick_extraction(delta)
+		return
 	_compass_timer -= delta
 	if _compass_timer <= 0.0:
 		_compass_timer = 0.5
@@ -1380,6 +1872,30 @@ func get_tactical_data() -> Dictionary:
 			"label": "Bounty Target",
 			"color": Color("ff6e6e"),
 		})
+	for entry in _dungeon_entries:
+		if entry.get("position") is Vector3:
+			markers.append({
+				"position": entry["position"],
+				"kind": &"dungeon",
+				"label": String(entry.get("name", "Under-Reach")),
+				"color": Color("c79cff"),
+			})
+	var weather: Dictionary = {}
+	var clock_text := ""
+	var time_of_day := RunState.time_of_day
+	var is_night := false
+	if world != null:
+		if world.has_method("get_weather_system"):
+			var weather_node = world.call("get_weather_system")
+			if weather_node != null and is_instance_valid(weather_node):
+				weather = weather_node.call("get_state")
+		if world.has_method("get_day_night_cycle"):
+			var cycle = world.call("get_day_night_cycle")
+			if cycle != null and is_instance_valid(cycle):
+				clock_text = String(cycle.call("get_clock_text"))
+				time_of_day = float(cycle.call("get_time_of_day"))
+				is_night = bool(cycle.call("is_night"))
+	RunState.set_environment_snapshot(StringName(weather.get("id", &"")), String(weather.get("display_name", "")), time_of_day)
 	var hostiles: Array = []
 	for hostile in _hostiles:
 		if hostile == null or not is_instance_valid(hostile) or not (hostile is Node3D):
@@ -1419,6 +1935,22 @@ func get_tactical_data() -> Dictionary:
 		"time_left": RunState.get_time_left(),
 		"difficulty_name": RunState.get_difficulty_name(),
 		"mode_name": RunState.get_mode_name(),
+		"planet_id": String(RunState.planet_id),
+		"planet_name": RunState.get_planet_name(),
+		"weather": weather,
+		"weather_name": String(weather.get("display_name", "")),
+		"weather_icon": String(weather.get("icon", &"weather-sun")),
+		"weather_color": weather.get("color", Color("ffc16b")),
+		"clock_text": clock_text,
+		"time_of_day": time_of_day,
+		"is_night": is_night,
+		"hazard": String(weather.get("hazard", &"none")),
+		"in_dungeon": _in_dungeon,
+		"dungeon_name": get_dungeon_name(),
+		"dungeons_cleared": RunState.dungeons_cleared,
+		"stage_index": RunState.stage_index,
+		"stage_total": RunState.stage_total,
+		"stage_title": RunState.stage_title,
 		"mode_id": String(RunState.get_mode_id()),
 		"map_name": RunState.get_map_preset_name(),
 		"map_preset_id": String(RunState.get_map_preset_id()),
@@ -1454,8 +1986,28 @@ func _on_poi_discovered(index: int, poi: Dictionary) -> void:
 	EventBus.radio_message.emit("Waystation Kestrel", poi_name + " is on your map now.")
 
 
+func _update_dungeon_compass() -> void:
+	if _active_dungeon == null or not is_instance_valid(_active_dungeon):
+		return
+	var entries: Array = []
+	var exit_position: Vector3 = _active_dungeon.call("get_exit_global_position")
+	entries.append({"degrees": _bearing_to(exit_position), "color": Color("62e6c3"), "kind": &"exfil"})
+	if not bool(_active_dungeon.call("is_cleared")):
+		var boss_position: Vector3 = _active_dungeon.call("get_boss_global_position")
+		entries.append({"degrees": _bearing_to(boss_position), "color": Color("ff6e6e"), "kind": &"bounty"})
+	var hud = _get_hud()
+	if hud != null and hud.has_method("set_compass_markers"):
+		hud.call("set_compass_markers", entries)
+	_mission_trackers = _build_mission_trackers()
+	if hud != null and hud.has_method("set_mission_trackers"):
+		hud.call("set_mission_trackers", _mission_trackers.duplicate(true))
+
+
 func _update_compass_markers() -> void:
 	if player == null or not is_instance_valid(player):
+		return
+	if _in_dungeon:
+		_update_dungeon_compass()
 		return
 	_update_discovery()
 	_mission_trackers = _build_mission_trackers()
@@ -1538,6 +2090,9 @@ func _build_mission_trackers() -> Array:
 			"world_position": _nearest_objective_position(),
 			"progress": RunState.get_objective_progress(&"contract"),
 			"total": contract_total,
+			"stage_number": RunState.stage_index + 1,
+			"stage_total": RunState.stage_total,
+			"stage_title": RunState.stage_title,
 		})
 	var cache_total := RunState.get_objective_total(&"side_caches")
 	if cache_total > 0:

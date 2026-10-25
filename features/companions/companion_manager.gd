@@ -27,6 +27,7 @@ var _allies: Array[Node] = []
 var _pet: Node = null
 var _spawn_parent: Node3D = null
 var _spawned: bool = false
+var _suspended: bool = false
 
 
 func _ready() -> void:
@@ -132,6 +133,41 @@ func command_ally(index: int, command: StringName, target: Node = null) -> bool:
 
 func is_spawned() -> bool:
 	return _spawned
+
+
+## Freezes squad AI while the player is inside an under-reach instance and parks
+## the members at the entrance. Resuming re-enables AI and reforms the squad on
+## the player. Never deletes the squad.
+func set_suspended(value: bool, hold_position: Vector3 = Vector3.ZERO) -> void:
+	if _suspended == value:
+		return
+	_suspended = value
+	var allies := get_allies()
+	for i in allies.size():
+		var ally := allies[i]
+		if not (ally is Node):
+			continue
+		ally.set_physics_process(not value)
+		ally.set_process(not value)
+		if ally is Node3D:
+			if value:
+				var offset := Vector3(2.0 if i % 2 == 0 else -2.0, 0.0, 1.5)
+				(ally as Node3D).global_position = hold_position + offset
+			else:
+				(ally as Node3D).global_position = _squad_spawn_point(i)
+	var pet := get_pet()
+	if pet is Node:
+		pet.set_physics_process(not value)
+		pet.set_process(not value)
+		if pet is Node3D:
+			if value:
+				(pet as Node3D).global_position = hold_position + Vector3(0.0, 1.6, -1.5)
+			else:
+				(pet as Node3D).global_position = _squad_spawn_point(MAX_ALLIES) + Vector3.UP * 1.7
+
+
+func is_suspended() -> bool:
+	return _suspended
 
 
 # ---------------------------------------------------------------------------

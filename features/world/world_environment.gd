@@ -6,6 +6,7 @@ extends RefCounted
 
 const Palette := preload("res://features/world/world_palette.gd")
 const SkyShader := preload("res://assets/shaders/world/sky.gdshader")
+const DirectorScript := preload("res://features/world/environment_director.gd")
 
 ## Direction from the world toward the sun (unit) — low western sun.
 const TO_SUN := Vector3(-0.80, 0.30, -0.52)
@@ -18,7 +19,7 @@ const TO_FILL := Vector3(0.55, 0.50, 0.66)
 ## sky_top, sky_horizon, sky_ground, sun_color, sun_dir, sun_energy,
 ## fill_color, fog_color, fog_density, volumetric_fog_density. Unknown keys and
 ## missing values fall back to the default palette.
-func setup(parent: Node3D, overrides: Dictionary = {}) -> Dictionary:
+func setup(parent: Node3D, overrides: Dictionary = {}, planet: Dictionary = {}) -> Dictionary:
 	var to_sun: Vector3 = overrides.get("sun_dir", TO_SUN)
 	if to_sun.length_squared() < 0.000001:
 		to_sun = TO_SUN
@@ -131,6 +132,16 @@ func setup(parent: Node3D, overrides: Dictionary = {}) -> Dictionary:
 	fill.transform = Transform3D(Basis.looking_at(-TO_FILL.normalized(), Vector3.UP), Vector3(0.0, 80.0, 0.0))
 	parent.add_child(fill)
 	result["fill"] = fill
+
+	# Single writer for time-of-day + weather. Created here so the world layer
+	# owns the whole environment stack; callers get it via get_environment_data().
+	var director = DirectorScript.new()
+	if director is Node:
+		director.name = "EnvironmentDirector"
+		parent.add_child(director)
+		if director.has_method("setup"):
+			director.call("setup", result, overrides, planet)
+		result["director"] = director
 
 	return result
 

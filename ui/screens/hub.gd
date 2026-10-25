@@ -1,24 +1,15 @@
 class_name HubScreen
 extends UIScreen
 ## Contract board and operations hub. Selection, named difficulty (each one owns
-## a map preset), normal/quick mode and risk mutators all feed the real
+## a map preset), game mode and risk mutators all feed the real
 ## App.start_deployment(...) call; squad/outpost/records strips probe live
 ## ProfileState data.
-
-const MODES := [
-	{
-		"id": &"normal", "name": "Normal", "sub": "18:00 RUN", "icon": &"timer",
-		"tip": "Standard run clock: 18 minutes of Reach time. Movement and combat stay real-time.",
-	},
-	{
-		"id": &"quick", "name": "Quick", "sub": "09:00 · ×2", "icon": &"bolt",
-		"tip": "Everything runs twice as fast. Rewards are unchanged, but a quick clock doubles pressure per minute.",
-	},
-]
 
 var _selected_contract: StringName = &""
 var _difficulty_id: StringName = &""
 var _mode_id: StringName = &""
+var _map_id: StringName = &""
+var _planet_id: StringName = &""
 var _mutators: Dictionary = {}
 var _grid: GridContainer = null
 var _hero_host: VBoxContainer = null
@@ -45,10 +36,12 @@ func _compose() -> void:
 		_difficulty_id = ProfileState.get_last_difficulty()
 		if ContentDB.get_difficulty(_difficulty_id).is_empty():
 			_difficulty_id = &"patrol"
-	if not (_mode_id in [&"normal", &"quick"]):
+	if _mode_id == &"" or ContentDB.get_game_mode(_mode_id).is_empty():
 		_mode_id = ProfileState.get_last_mode()
-	if not (_mode_id in [&"normal", &"quick"]):
-		_mode_id = &"normal"
+	if ContentDB.get_game_mode(_mode_id).is_empty():
+		var modes := ContentDB.get_game_modes()
+		_mode_id = StringName(modes[0].get("id", &"normal")) if not modes.is_empty() else &"normal"
+	_ensure_map_selection()
 
 	_hero_host = UIFactory.vbox(0)
 	body.add_child(_hero_host)
@@ -85,14 +78,22 @@ func _build_hero() -> void:
 	top.add_child(UIFactory.label(String(contract.id).to_upper(), "Micro", UIPalette.muted_dim))
 	left.add_child(top)
 
+	var title_row := UIFactory.hbox(UIPalette.SP2)
+	var contract_medallion := UIFactory.medallion(_contract_icon(contract), 44, contract.color)
+	contract_medallion.tooltip_text = _contract_tooltip(contract)
+	title_row.add_child(contract_medallion)
+	var title_stack := UIFactory.vbox(2)
+	title_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var title := UIFactory.heading(contract.display_name, "H2")
 	title.tooltip_text = _contract_tooltip(contract)
-	left.add_child(title)
+	title_stack.add_child(title)
 
 	var desc := UIFactory.label(contract.description, "BodySmall", UIPalette.muted)
 	desc.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	desc.tooltip_text = _contract_tooltip(contract)
-	left.add_child(desc)
+	title_stack.add_child(desc)
+	title_row.add_child(title_stack)
+	left.add_child(title_row)
 
 	var tags := UIFactory.hbox(UIPalette.SP2)
 	tags.add_child(UIFactory.badge(contract.objective_label if not contract.objective_label.is_empty() else "Objective", UIPalette.blue, &"target"))
@@ -107,6 +108,11 @@ func _build_hero() -> void:
 	rewards.add_child(UIFactory.stat_block(&"arrow-up", "Contract XP", str(contract.xp_reward), UIPalette.mint, 18))
 	rewards.add_child(UIFactory.stat_block(&"flag", "Objectives", str(contract.objective_count()), UIPalette.ivory, 18))
 	left.add_child(rewards)
+
+	left.add_child(UIFactory.divider(UIPalette.line_soft))
+	left.add_child(_build_mission_brief(contract))
+	left.add_child(_build_hero_forecast())
+	left.add_child(_build_target_intel())
 	row.add_child(left)
 
 	row.add_child(UIFactory.v_divider(UIPalette.line, 1))
@@ -145,13 +151,16 @@ func _build_deploy_console(contract: ContractData) -> VBoxContainer:
 		difficulty_grid.add_child(_build_difficulty_card(difficulty, difficulty_group))
 	console.add_child(difficulty_grid)
 
+	console.add_child(UIFactory.label("MAP", "StatLabel"))
+	console.add_child(_build_map_selector())
+
 	console.add_child(UIFactory.label("GAME MODE", "StatLabel"))
 	var mode_grid := GridContainer.new()
 	mode_grid.columns = 2
 	mode_grid.add_theme_constant_override("h_separation", 6)
 	mode_grid.add_theme_constant_override("v_separation", 6)
 	var mode_group := ButtonGroup.new()
-	for mode in MODES:
+	for mode in ContentDB.get_game_modes():
 		mode_grid.add_child(_build_mode_card(mode, mode_group))
 	console.add_child(mode_grid)
 
@@ -285,33 +294,42 @@ func _difficulty_stat(icon_name: StringName, value_text: String, accent: Color, 
 
 func _build_mode_card(mode: Dictionary, group: ButtonGroup) -> Button:
 	var mode_id := StringName(mode.get("id", &"normal"))
-	var quick := mode_id == &"quick"
-	var accent := UIPalette.amber if quick else UIPalette.mint
+	var accent: Color = mode.get("color", UIPalette.mint)
+	var clock := ContentDB.get_mode_clock(mode_id)
+	if clock.is_empty():
+		clock = String(mode.get("clock", "--:--"))
 	var card := UIFactory.card_button(true)
 	card.button_group = group
 	card.button_pressed = mode_id == _mode_id
-	card.custom_minimum_size = Vector2(0, 54)
+	card.custom_minimum_size = Vector2(0, 64)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.tooltip_text = String(mode.get("tip", ""))
+	card.tooltip_text = String(mode.get("description", mode.get("tip", "")))
 	card.pressed.connect(func() -> void: _set_mode(mode_id))
 	var content := UIFactory.card_content(card)
 	if content == null:
 		return card
-	content.add_theme_constant_override("margin_left", 12)
-	content.add_theme_constant_override("margin_top", 8)
-	content.add_theme_constant_override("margin_right", 12)
-	content.add_theme_constant_override("margin_bottom", 8)
-	var box := UIFactory.vbox(1)
+	content.add_theme_constant_override("margin_left", 10)
+	content.add_theme_constant_override("margin_top", 7)
+	content.add_theme_constant_override("margin_right", 10)
+	content.add_theme_constant_override("margin_bottom", 7)
+	var box := UIFactory.vbox(2)
 	var head := UIFactory.hbox(6)
-	var glyph := UIFactory.icon_or_null(StringName(mode.get("icon", &"timer")), 15, accent)
-	if glyph != null:
-		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		head.add_child(glyph)
-	head.add_child(UIFactory.display_text(String(mode.get("name", "Normal")), 14, 650, UIPalette.ivory))
-	head.add_child(UIFactory.spacer_h())
-	head.add_child(UIFactory.label("ACTIVE" if card.button_pressed else "", "Micro", accent))
+	head.add_child(UIFactory.medallion(_safe_icon(StringName(mode.get("icon", &"timer")), &"timer"), 24, accent))
+	var title := UIFactory.display_text(_mode_name(mode), 13, 650, UIPalette.ivory)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	head.add_child(title)
+	if card.button_pressed:
+		var check := UIFactory.icon_or_null(&"check", 11, accent)
+		if check != null:
+			head.add_child(check)
+	var clock_label := UIFactory.label(clock, "MonoSmall", accent)
+	clock_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(clock_label)
 	box.add_child(head)
-	box.add_child(UIFactory.label(String(mode.get("sub", "")), "Micro", UIPalette.muted))
+	var tag := UIFactory.label(_mode_tag(mode), "Micro", accent)
+	tag.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	box.add_child(tag)
 	content.add_child(box)
 	UIFactory.passive_tree(content)
 	return card
@@ -353,6 +371,10 @@ func _mutator_icon(mutator_id: StringName) -> StringName:
 func _build_console_summary() -> HBoxContainer:
 	var row := UIFactory.hbox(UIPalette.SP3)
 	var difficulty := _difficulty()
+	var preset := _selected_map_preset()
+	var map_chip := UIFactory.icon_value(&"map", String(preset.get("display_name", "Map")), UIPalette.mint, 12)
+	map_chip.tooltip_text = "Selected map"
+	row.add_child(map_chip)
 	var reward_chip := UIFactory.icon_value(&"coins", "×%.2f" % float(difficulty.get("reward", 1.0)), UIPalette.amber, 12)
 	reward_chip.tooltip_text = "Difficulty reward multiplier"
 	row.add_child(reward_chip)
@@ -361,10 +383,10 @@ func _build_console_summary() -> HBoxContainer:
 		var bonus_chip := UIFactory.icon_value(&"bolt", "+%d%%" % int(round(bonus * 100.0)), UIPalette.mint, 12)
 		bonus_chip.tooltip_text = "Risk modifier reward bonus"
 		row.add_child(bonus_chip)
-	var quick := _mode_id == &"quick"
-	var mode_icon: StringName = &"bolt" if quick else &"timer"
-	var mode_chip := UIFactory.icon_value(mode_icon, _mode_clock_text(), UIPalette.amber if quick else UIPalette.muted, 12)
-	mode_chip.tooltip_text = "Run clock for the selected mode"
+	var mode := ContentDB.get_game_mode(_mode_id)
+	var mode_icon := _safe_icon(StringName(mode.get("icon", &"timer")), &"timer")
+	var mode_chip := UIFactory.icon_value(mode_icon, _mode_clock_text(), mode.get("color", UIPalette.muted), 12)
+	mode_chip.tooltip_text = "Run clock for %s" % _mode_name(mode)
 	row.add_child(mode_chip)
 	row.add_child(UIFactory.spacer_h())
 	row.add_child(UIFactory.label("RISK REWARD", "Micro", UIPalette.muted_dim))
@@ -372,7 +394,14 @@ func _build_console_summary() -> HBoxContainer:
 
 
 func _mode_clock_text() -> String:
-	return "09:00 · ×2" if _mode_id == &"quick" else "18:00"
+	var mode := ContentDB.get_game_mode(_mode_id)
+	var clock := ContentDB.get_mode_clock(_mode_id)
+	if clock.is_empty():
+		clock = String(mode.get("clock", "18:00"))
+	var scale := float(mode.get("time_scale", 1.0))
+	if scale > 1.0:
+		return "%s · ×%.0f" % [clock, scale]
+	return clock
 
 
 func _difficulty() -> Dictionary:
@@ -449,18 +478,18 @@ func _build_contract_card(contract: ContractData, group: ButtonGroup) -> Button:
 	var box := UIFactory.vbox(UIPalette.SP2)
 
 	var head := UIFactory.hbox(UIPalette.SP2)
+	head.add_child(UIFactory.medallion(_contract_icon(contract), 34, UIPalette.muted_dim if locked else contract.color))
+	var head_text := UIFactory.vbox(1)
+	head_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var title_row := UIFactory.hbox(UIPalette.SP2)
 	var title := UIFactory.heading(contract.display_name, "H3")
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	head.add_child(title)
-	head.add_child(UIFactory.badge("T%d" % contract.required_threat, UIPalette.amber if not locked else UIPalette.muted_dim, &"warning"))
-	box.add_child(head)
+	title_row.add_child(title)
+	title_row.add_child(UIFactory.badge("T%d" % contract.required_threat, UIPalette.amber if not locked else UIPalette.muted_dim, &"warning"))
+	head_text.add_child(title_row)
 
 	var objective_row := UIFactory.hbox(6)
-	var glyph := UIFactory.icon_or_null(&"target", 12, UIPalette.blue if not locked else UIPalette.muted_dim)
-	if glyph != null:
-		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		objective_row.add_child(glyph)
 	var objective_label := UIFactory.label(
 		contract.objective_label.to_upper() if not contract.objective_label.is_empty() else "OBJECTIVE",
 		"Micro",
@@ -470,7 +499,9 @@ func _build_contract_card(contract: ContractData, group: ButtonGroup) -> Button:
 	objective_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	objective_row.add_child(objective_label)
 	objective_row.add_child(UIFactory.label("%d OBJ" % contract.objective_count(), "Micro", UIPalette.muted_dim))
-	box.add_child(objective_row)
+	head_text.add_child(objective_row)
+	head.add_child(head_text)
+	box.add_child(head)
 
 	var footer := UIFactory.hbox(UIPalette.SP3)
 	footer.add_child(UIFactory.icon_value(&"coins", UIPalette.format_int(contract.base_reward), UIPalette.amber, 12))
@@ -602,11 +633,339 @@ func _set_difficulty(difficulty_id: StringName) -> void:
 	if difficulty_id == _difficulty_id or ContentDB.get_difficulty(difficulty_id).is_empty():
 		return
 	_difficulty_id = difficulty_id
+	_map_id = ContentDB.get_default_map_for_difficulty(difficulty_id)
+	var preset := ContentDB.get_map_preset(_map_id)
+	_planet_id = StringName(preset.get("planet_id", _planet_id))
+	refresh()
+
+
+func _ensure_map_selection() -> void:
+	if _map_id == &"" or ContentDB.get_map_preset(_map_id).is_empty():
+		_map_id = ProfileState.get_last_map()
+		if _map_id == &"" or ContentDB.get_map_preset(_map_id).is_empty():
+			_map_id = ContentDB.get_default_map_for_difficulty(_difficulty_id)
+	var preset := ContentDB.get_map_preset(_map_id)
+	_planet_id = StringName(preset.get("planet_id", _planet_id))
+
+
+func _selected_map_preset() -> Dictionary:
+	var preset := ContentDB.get_map_preset(_map_id)
+	if preset.is_empty():
+		preset = ContentDB.get_map_preset(ContentDB.get_default_map_for_difficulty(_difficulty_id))
+	return preset
+
+
+func _build_map_selector() -> VBoxContainer:
+	var box := UIFactory.vbox(6)
+	var planet_grid := GridContainer.new()
+	planet_grid.columns = 3
+	planet_grid.add_theme_constant_override("h_separation", 4)
+	planet_grid.add_theme_constant_override("v_separation", 4)
+	var planet_group := ButtonGroup.new()
+	for planet in ContentDB.get_planets():
+		planet_grid.add_child(_build_planet_chip(planet, planet_group))
+	box.add_child(planet_grid)
+	var map_grid := GridContainer.new()
+	map_grid.columns = 2
+	map_grid.add_theme_constant_override("h_separation", 4)
+	map_grid.add_theme_constant_override("v_separation", 4)
+	var map_group := ButtonGroup.new()
+	for preset in ContentDB.get_map_presets_for_planet(_planet_id):
+		map_grid.add_child(_build_map_chip(preset, map_group))
+	box.add_child(map_grid)
+	return box
+
+
+func _build_planet_chip(planet: Dictionary, group: ButtonGroup) -> Button:
+	var planet_id := StringName(planet.get("id", &""))
+	var accent: Color = planet.get("color", UIPalette.violet)
+	var selected := planet_id == _planet_id
+	var chip := UIFactory.card_button(true)
+	chip.button_group = group
+	chip.button_pressed = selected
+	chip.custom_minimum_size = Vector2(0, 32)
+	chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chip.tooltip_text = "%s — %s\nHazard: %s" % [
+		String(planet.get("display_name", "Planet")),
+		String(planet.get("subtitle", "")),
+		String(planet.get("hazard", "none")),
+	]
+	chip.pressed.connect(func() -> void: _select_planet(planet_id))
+	var content := UIFactory.card_content(chip)
+	if content == null:
+		return chip
+	content.add_theme_constant_override("margin_left", 6)
+	content.add_theme_constant_override("margin_top", 4)
+	content.add_theme_constant_override("margin_right", 6)
+	content.add_theme_constant_override("margin_bottom", 4)
+	var row := UIFactory.hbox(5)
+	row.add_child(UIFactory.medallion(_safe_icon(StringName(planet.get("icon", &"planet")), &"planet"), 20, accent))
+	var text := UIFactory.label(String(planet.get("display_name", "Planet")), "Micro", UIPalette.ivory if selected else UIPalette.muted)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	row.add_child(text)
+	content.add_child(row)
+	UIFactory.passive_tree(content)
+	return chip
+
+
+func _build_map_chip(preset: Dictionary, group: ButtonGroup) -> Button:
+	var map_id := StringName(preset.get("id", &""))
+	var selected := map_id == _map_id
+	var chip := UIFactory.card_button(true)
+	chip.button_group = group
+	chip.button_pressed = selected
+	chip.custom_minimum_size = Vector2(0, 30)
+	chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chip.tooltip_text = "%s — %s" % [
+		String(preset.get("display_name", "Map")),
+		String(preset.get("subtitle", "")),
+	]
+	chip.pressed.connect(func() -> void: _select_map(map_id))
+	var content := UIFactory.card_content(chip)
+	if content == null:
+		return chip
+	content.add_theme_constant_override("margin_left", 5)
+	content.add_theme_constant_override("margin_top", 4)
+	content.add_theme_constant_override("margin_right", 5)
+	content.add_theme_constant_override("margin_bottom", 4)
+	var row := UIFactory.hbox(5)
+	var thumb := UIMapThumbnail.new()
+	thumb.configure(map_id, Vector2(28, 18))
+	thumb.custom_minimum_size = Vector2(28, 18)
+	thumb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(thumb)
+	var text := UIFactory.label(String(preset.get("display_name", "Map")), "Micro", UIPalette.ivory if selected else UIPalette.muted)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	row.add_child(text)
+	if selected:
+		var check := UIFactory.icon_or_null(&"check", 10, UIPalette.mint)
+		if check != null:
+			row.add_child(check)
+	content.add_child(row)
+	UIFactory.passive_tree(content)
+	return chip
+
+
+func _build_mission_brief(contract: ContractData) -> VBoxContainer:
+	var brief := UIFactory.vbox(4)
+	var head := UIFactory.hbox(UIPalette.SP2)
+	var glyph := UIFactory.icon_or_null(&"flag", 12, UIPalette.amber)
+	if glyph != null:
+		head.add_child(glyph)
+	head.add_child(UIFactory.label("OPERATION BRIEF", "StatLabel"))
+	head.add_child(UIFactory.spacer_h())
+	head.add_child(UIFactory.label("%d OBJ" % contract.objective_count(), "Micro", UIPalette.muted_dim))
+	brief.add_child(head)
+	if contract.is_staged():
+		for stage in contract.stages:
+			if stage is Dictionary:
+				brief.add_child(_stage_row(stage))
+	else:
+		for type in contract.objective_types:
+			brief.add_child(_objective_type_row(StringName(type)))
+	return brief
+
+
+func _stage_row(stage: Dictionary) -> HBoxContainer:
+	var row := UIFactory.hbox(6)
+	var type := StringName(stage.get("type", &""))
+	var glyph := UIFactory.icon_or_null(_objective_icon(type), 12, UIPalette.mint)
+	if glyph != null:
+		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(glyph)
+	var label_text := String(stage.get("label", String(type).capitalize()))
+	var label := UIFactory.label(label_text, "BodySmall")
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	row.add_child(label)
+	row.add_child(UIFactory.label("×%d" % int(stage.get("count", 1)), "MonoSmall", UIPalette.muted))
+	return row
+
+
+func _objective_type_row(type: StringName) -> HBoxContainer:
+	var row := UIFactory.hbox(6)
+	var glyph := UIFactory.icon_or_null(_objective_icon(type), 12, UIPalette.mint)
+	if glyph != null:
+		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(glyph)
+	var label := UIFactory.label(String(type).replace("_", " ").capitalize(), "BodySmall")
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(label)
+	var site_label := UIFactory.label("OBJECTIVE", "Micro", UIPalette.muted_dim)
+	site_label.tooltip_text = "Authored objective type for this contract"
+	row.add_child(site_label)
+	return row
+
+
+func _objective_icon(type: StringName) -> StringName:
+	var mapping := {
+		&"cache": &"cache",
+		&"relay": &"radio",
+		&"hunt": &"skull",
+		&"survey": &"map",
+		&"rescue": &"users",
+		&"vault": &"lock",
+		&"dungeon": &"dungeon",
+		&"dungeon_boss": &"warning",
+	}
+	var icon: StringName = mapping.get(type, &"flag")
+	return icon if UIIcons.has_icon(icon) else &"flag"
+
+
+func _build_hero_forecast() -> HBoxContainer:
+	var row := UIFactory.hbox(UIPalette.SP2)
+	var glyph := UIFactory.icon_or_null(&"weather-storm", 13, UIPalette.blue)
+	if glyph != null:
+		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(glyph)
+	row.add_child(UIFactory.label("WEATHER", "StatLabel"))
+	row.add_child(_build_forecast_row())
+	return row
+
+
+func _build_forecast_row() -> HFlowContainer:
+	var preset := _selected_map_preset()
+	var forecast := _forecast_weather(preset)
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 4)
+	flow.add_theme_constant_override("v_separation", 4)
+	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if forecast.is_empty():
+		flow.add_child(UIFactory.label("No forecast", "Micro", UIPalette.muted_dim))
+	for weather in forecast:
+		flow.add_child(_weather_chip(weather))
+	return flow
+
+
+func _weather_chip(weather: Dictionary) -> PanelContainer:
+	var accent: Color = weather.get("color", UIPalette.muted)
+	var chip := UIFactory.panel("ChipPanel")
+	chip.add_theme_stylebox_override(
+		"panel",
+		UITheme._box(UIPalette.alpha(accent, 0.08), UIPalette.alpha(accent, 0.35), UIPalette.R_CHIP, 1, Vector4(6, 2, 6, 2))
+	)
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chip.tooltip_text = "%s\nVision ×%.2f · Move ×%.2f\nHazard: %s" % [
+		String(weather.get("display_name", "Weather")),
+		float(weather.get("vision_mult", 1.0)),
+		float(weather.get("move_mult", 1.0)),
+		String(weather.get("hazard", "none")),
+	]
+	chip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var row := UIFactory.hbox(4)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var glyph := UIFactory.icon_or_null(_safe_icon(StringName(weather.get("icon", &"weather-sun")), &"weather-sun"), 12, accent)
+	if glyph != null:
+		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(glyph)
+	chip.add_child(row)
+	return chip
+
+
+func _forecast_weather(preset: Dictionary) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	var pool: Array = preset.get("weather_pool", [])
+	if not pool.is_empty():
+		out = ContentDB.get_weather_defs_for_pool(pool)
+	if out.is_empty():
+		var defs = preset.get("weather_defs", [])
+		if defs is Array:
+			for entry in defs:
+				if entry is Dictionary:
+					out.append(entry)
+	return out
+
+
+func _build_target_intel() -> HBoxContainer:
+	var row := UIFactory.hbox(UIPalette.SP2)
+	var glyph := UIFactory.icon_or_null(&"skull", 12, UIPalette.danger)
+	if glyph != null:
+		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(glyph)
+	row.add_child(UIFactory.label("TARGET INTEL", "StatLabel"))
+	var elites := ContentDB.get_elite_enemies()
+	var bosses := ContentDB.get_boss_enemies()
+	var elite_chip := UIFactory.icon_value(&"star", "%d ELITES" % elites.size(), UIPalette.violet, 11)
+	elite_chip.tooltip_text = "%d elite targets" % elites.size()
+	row.add_child(elite_chip)
+	var boss_chip := UIFactory.icon_value(&"skull", "%d BOSSES" % bosses.size(), UIPalette.danger, 11)
+	boss_chip.tooltip_text = "%d boss targets" % bosses.size()
+	row.add_child(boss_chip)
+	row.add_child(UIFactory.spacer_h())
+	for faction in _target_factions(elites, bosses):
+		var sigil := UIFactory.medallion(_faction_icon(faction), 20, UIPalette.faction_color(faction))
+		sigil.tooltip_text = "%s targets" % String(faction).capitalize()
+		row.add_child(sigil)
+	return row
+
+
+func _target_factions(elites: Array, bosses: Array) -> Array[StringName]:
+	var out: Array[StringName] = []
+	for enemy in elites:
+		if enemy == null:
+			continue
+		var faction := StringName(enemy.faction)
+		if not (faction in out):
+			out.append(faction)
+	for enemy in bosses:
+		if enemy == null:
+			continue
+		var faction := StringName(enemy.faction)
+		if not (faction in out):
+			out.append(faction)
+	return out
+
+
+func _faction_icon(faction: StringName) -> StringName:
+	var icon := StringName("faction-%s" % String(faction))
+	return icon if UIIcons.has_icon(icon) else &"skull"
+
+
+func _contract_icon(contract: ContractData) -> StringName:
+	if contract == null:
+		return &"flag"
+	return _safe_icon(contract.icon, &"flag")
+
+
+func _mode_name(mode: Dictionary) -> String:
+	var out := String(mode.get("display_name", mode.get("name", ""))).strip_edges()
+	return out if not out.is_empty() else "Mode"
+
+
+func _mode_tag(mode: Dictionary) -> String:
+	var out := String(mode.get("tag", "")).strip_edges()
+	return out if not out.is_empty() else "STANDARD"
+
+
+func _safe_icon(icon_name: StringName, fallback: StringName) -> StringName:
+	if UIIcons.has_icon(icon_name):
+		return icon_name
+	return fallback if UIIcons.has_icon(fallback) else &"bolt"
+
+
+func _select_planet(planet_id: StringName) -> void:
+	if planet_id == _planet_id:
+		return
+	var maps := ContentDB.get_map_presets_for_planet(planet_id)
+	if maps.is_empty():
+		return
+	_planet_id = planet_id
+	_map_id = StringName(maps[0].get("id", _map_id))
+	refresh()
+
+
+func _select_map(map_id: StringName) -> void:
+	if map_id == _map_id or ContentDB.get_map_preset(map_id).is_empty():
+		return
+	_map_id = map_id
+	_planet_id = StringName(ContentDB.get_map_preset(map_id).get("planet_id", _planet_id))
 	refresh()
 
 
 func _set_mode(mode_id: StringName) -> void:
-	if mode_id == _mode_id or not (mode_id in [&"normal", &"quick"]):
+	if mode_id == _mode_id or ContentDB.get_game_mode(mode_id).is_empty():
 		return
 	_mode_id = mode_id
 	ProfileState.set_last_mode(mode_id)
@@ -647,7 +1006,8 @@ func _on_deploy_pressed() -> void:
 			mutator_ids.append(StringName(mutator_id))
 	ProfileState.set_last_difficulty(_difficulty_id)
 	ProfileState.set_last_mode(_mode_id)
-	App.start_deployment(_selected_contract, 0, threat, mutator_ids, _difficulty_id, _mode_id)
+	ProfileState.set_last_map(_map_id)
+	App.start_deployment(_selected_contract, 0, threat, mutator_ids, _difficulty_id, _mode_id, _map_id)
 
 
 func first_focus_control() -> Control:

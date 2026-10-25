@@ -101,7 +101,7 @@ func _build_slots() -> void:
 	for slot_def in SLOT_DEFS:
 		if slot_def.kind != "gear":
 			continue
-		_slots_host.add_child(_build_slot_row(slot_def))
+		_slots_host.add_child(_build_slot_card(slot_def))
 
 
 func _category_header(icon_name: StringName, text: String) -> HBoxContainer:
@@ -120,33 +120,33 @@ func _build_slot_card(slot_def: Dictionary) -> Button:
 	var active := slot_id == _active_slot
 	var card := UIFactory.card_button(true)
 	card.button_pressed = active
-	card.custom_minimum_size = Vector2(0, 82)
-	card.tooltip_text = String(slot_def.label)
+	card.custom_minimum_size = Vector2(0, 88)
+	card.tooltip_text = _slot_tooltip(slot_def, info)
 	card.pressed.connect(func() -> void: _select_slot(slot_id))
 	var content := UIFactory.card_content(card)
 	if content == null:
 		return card
-	content.add_theme_constant_override("margin_left", 16)
-	content.add_theme_constant_override("margin_top", 12)
-	content.add_theme_constant_override("margin_right", 16)
-	content.add_theme_constant_override("margin_bottom", 12)
+	_set_card_margins(content, 14, 10, 14, 10)
 	var row := UIFactory.hbox(UIPalette.SP3)
-	var accent: Color = UIPalette.muted_dim
-	if not info.is_empty():
-		accent = info.get("rarity_color", UIPalette.muted_dim)
-	var glyph := UIFactory.icon_or_null(StringName(slot_def.icon), 24, accent)
-	if glyph != null:
-		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(glyph)
-	var text := UIFactory.vbox(3)
+	row.add_child(_slot_art(slot_def, info, active))
+	var accent: Color = UIPalette.muted_dim if info.is_empty() else info.get("rarity_color", UIPalette.muted_dim)
+	var text := UIFactory.vbox(2)
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_label := UIFactory.display_text(
+		"Empty" if info.is_empty() else String(info.get("display_name", "Unknown")),
+		18,
+		600,
+		accent
+	)
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	text.add_child(name_label)
 	if info.is_empty():
-		text.add_child(UIFactory.display_text("Empty", 18, 600, UIPalette.muted_dim))
+		text.add_child(UIFactory.label("No %s equipped" % String(slot_def.label).to_lower(), "Micro", UIPalette.muted_dim))
 	else:
-		text.add_child(UIFactory.display_text(String(info.get("display_name", "Unknown")), 18, 600, accent))
+		text.add_child(UIFactory.label(_slot_meta_text(slot_def, info), "Micro", UIPalette.muted))
 		var stats_row := UIFactory.hbox(UIPalette.SP3)
 		var weapon_stats: Dictionary = info.get("stats", {})
-		if info.get("kind") == "weapon":
+		if String(info.get("kind", "")) == "weapon":
 			stats_row.add_child(_icon_value_tip(&"target", "%d DPS" % int(weapon_stats.get("dps", 0.0)), accent, "Damage per second"))
 			stats_row.add_child(_icon_value_tip(&"ammo", "%d" % int(weapon_stats.get("magazine", 0)), UIPalette.muted, "Magazine size"))
 		else:
@@ -159,54 +159,136 @@ func _build_slot_card(slot_def: Dictionary) -> Button:
 	return card
 
 
-func _build_slot_row(slot_def: Dictionary) -> Button:
-	var slot_id: StringName = slot_def.id
-	var item := ProfileState.get_equipped_item(slot_id)
-	var info := ItemFactory.describe(item)
-	var active := slot_id == _active_slot
-	var card := UIFactory.card_button(true)
-	card.button_pressed = active
-	card.custom_minimum_size = Vector2(0, 48)
-	card.tooltip_text = String(slot_def.label)
-	card.pressed.connect(func() -> void: _select_slot(slot_id))
-	var content := UIFactory.card_content(card)
-	if content == null:
-		return card
-	content.add_theme_constant_override("margin_left", 14)
-	content.add_theme_constant_override("margin_top", 8)
-	content.add_theme_constant_override("margin_right", 14)
-	content.add_theme_constant_override("margin_bottom", 8)
-	var row := UIFactory.hbox(UIPalette.SP2)
-	var glyph := UIFactory.icon_or_null(StringName(slot_def.icon), 16, UIPalette.muted)
-	if glyph != null:
-		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(glyph)
-	var name_label := UIFactory.label(
-		"Empty" if info.is_empty() else String(info.get("display_name", "")),
-		"BodySmall",
-		UIPalette.muted_dim if info.is_empty() else UIPalette.ivory
+func _slot_art(slot_def: Dictionary, info: Dictionary, selected: bool = false) -> PanelContainer:
+	if info.is_empty():
+		var empty := UIItemArt.new()
+		empty.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		empty.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		empty.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		empty.configure(
+			String(slot_def.kind),
+			_art_slot_id(String(slot_def.id)),
+			"",
+			UIPalette.muted_dim,
+			UIPalette.muted_dim,
+			false
+		)
+		empty.custom_minimum_size = Vector2(52, 44)
+		var empty_frame := UIFactory.art_frame(empty, UIPalette.line, false)
+		empty_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		return empty_frame
+	var art := _item_art(info, Vector2(52, 44))
+	var rarity: Color = info.get("rarity_color", UIPalette.muted_dim)
+	var frame := UIFactory.art_frame(art, rarity, selected)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return frame
+
+
+func _slot_meta_text(slot_def: Dictionary, info: Dictionary) -> String:
+	if String(info.get("kind", "")) == "weapon":
+		var weapon: WeaponData = info.get("weapon", null) as WeaponData
+		var style := "Weapon"
+		if weapon != null:
+			style = String(weapon.style).replace("_", " ").capitalize()
+		return "%s · %s" % [style, String(slot_def.label)]
+	return "%s · %s" % [String(slot_def.label), String(info.get("rarity_name", "")).to_upper()]
+
+
+func _slot_tooltip(slot_def: Dictionary, info: Dictionary) -> String:
+	var lines: PackedStringArray = [String(slot_def.label)]
+	if info.is_empty():
+		lines.append("Empty slot. Select it, then equip an item from your locker.")
+	else:
+		lines.append("%s · Level %d" % [String(info.get("rarity_name", "Common")), int(info.get("level", 1))])
+		var description := String(info.get("description", ""))
+		if not description.is_empty():
+			lines.append(description)
+	return "\n".join(lines)
+
+
+func _item_tooltip(info: Dictionary) -> String:
+	var lines: PackedStringArray = [
+		"%s · %s · Level %d" % [
+			String(info.get("rarity_name", "")),
+			String(info.get("slot", "")).capitalize(),
+			int(info.get("level", 1)),
+		],
+	]
+	var description := String(info.get("description", ""))
+	if not description.is_empty():
+		lines.append(description)
+	return "\n".join(lines)
+
+
+func _slot_short_label(slot_id: StringName) -> String:
+	if slot_id == StatKeys.SLOT_PRIMARY:
+		return "P1"
+	if slot_id == StatKeys.SLOT_PRIMARY_2:
+		return "P2"
+	if slot_id == StatKeys.SLOT_SIDEARM:
+		return "SIDEARM"
+	return String(slot_id).replace("_", " ").to_upper()
+
+
+func _item_art(info: Dictionary, art_size: Vector2, compact: bool = false) -> UIItemArt:
+	var art := UIItemArt.new()
+	art.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art.configure(
+		String(info.get("kind", "gear")),
+		_art_slot_id(String(info.get("slot", ""))),
+		String(info.get("base_id", "")),
+		info.get("rarity_color", UIPalette.muted_dim),
+		_art_accent(info),
+		compact
 	)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	row.add_child(name_label)
-	if not info.is_empty():
-		var armor_accent: Color = info.get("rarity_color", UIPalette.ivory)
-		row.add_child(_icon_value_tip(&"shield-check", "%d" % int(info.get("armor", 0.0)), armor_accent, "Armor"))
-	content.add_child(row)
-	UIFactory.passive_tree(content)
-	return card
+	art.custom_minimum_size = art_size
+	return art
+
+
+func _art_tile(info: Dictionary, art_size: Vector2, selected: bool = false, compact: bool = false) -> PanelContainer:
+	var art := _item_art(info, art_size, compact)
+	var rarity: Color = info.get("rarity_color", UIPalette.muted_dim)
+	var frame := UIFactory.art_frame(art, rarity, selected)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return frame
+
+
+func _art_accent(info: Dictionary) -> Color:
+	var weapon: WeaponData = info.get("weapon", null) as WeaponData
+	if weapon != null:
+		return weapon.accent
+	var rarity: Color = info.get("rarity_color", UIPalette.muted_dim)
+	return UIPalette.mix(rarity, UIPalette.ivory, 0.3)
+
+
+func _art_slot_id(slot: String) -> String:
+	return "primary" if slot == "primary_2" else slot
+
+
+func _set_card_margins(content: MarginContainer, left: int, top: int, right: int, bottom: int) -> void:
+	content.add_theme_constant_override("margin_left", left)
+	content.add_theme_constant_override("margin_top", top)
+	content.add_theme_constant_override("margin_right", right)
+	content.add_theme_constant_override("margin_bottom", bottom)
 
 
 ## The close-combat knife is issued equipment, not a locker item: it cannot be
 ## unequipped, scrapped or replaced.
 func _build_knife_card() -> PanelContainer:
 	var card := UIFactory.panel("CardInset")
-	card.tooltip_text = "Every Warden carries a Combat Knife in weapon slot 4."
+	card.tooltip_text = "Every Warden carries a Combat Knife in weapon slot 4.\n55 damage · 2.8 m reach · no ammo. Issued equipment: cannot be unequipped, scrapped or replaced."
 	var content := UIFactory.hbox(UIPalette.SP3)
-	var glyph := UIFactory.icon_or_null(&"target", 24, UIPalette.mint)
-	if glyph != null:
-		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		content.add_child(glyph)
+	var knife_art := UIItemArt.new()
+	knife_art.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	knife_art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	knife_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	knife_art.configure("knife", "primary", "knife", UIPalette.mint, UIPalette.mint, false)
+	knife_art.custom_minimum_size = Vector2(52, 44)
+	var knife_frame := UIFactory.art_frame(knife_art, UIPalette.mint, false)
+	knife_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(knife_frame)
 	var text := UIFactory.vbox(3)
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var title_row := UIFactory.hbox(UIPalette.SP2)
@@ -215,7 +297,7 @@ func _build_knife_card() -> PanelContainer:
 	text.add_child(title_row)
 	text.add_child(UIFactory.label("55 DMG  ·  2.8 M  ·  NO AMMO  ·  ISSUED", "Micro", UIPalette.muted))
 	content.add_child(text)
-	card.add_child(UIFactory.pad(content, 16, 12, 16, 12))
+	card.add_child(UIFactory.pad(content, 14, 10, 14, 10))
 	return card
 
 
@@ -344,19 +426,12 @@ func _build_item_list() -> void:
 		var row := UIFactory.card_button(true)
 		row.button_group = group
 		row.button_pressed = uid == _selected_uid
-		row.custom_minimum_size = Vector2(0, 58)
-		row.tooltip_text = "%s · %s · Level %d" % [
-			String(info.get("rarity_name", "")),
-			String(info.get("slot", "")).capitalize(),
-			int(info.get("level", 1)),
-		]
+		row.custom_minimum_size = Vector2(0, 62)
+		row.tooltip_text = _item_tooltip(info)
 		var content := UIFactory.card_content(row)
 		if content == null:
 			continue
-		content.add_theme_constant_override("margin_left", 16)
-		content.add_theme_constant_override("margin_top", 10)
-		content.add_theme_constant_override("margin_right", 16)
-		content.add_theme_constant_override("margin_bottom", 10)
+		_set_card_margins(content, 12, 8, 12, 8)
 		var box := UIFactory.hbox(UIPalette.SP3)
 		var rarity: Color = info.get("rarity_color", UIPalette.muted)
 		var bar := ColorRect.new()
@@ -365,16 +440,21 @@ func _build_item_list() -> void:
 		bar.size_flags_vertical = Control.SIZE_FILL
 		bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(bar)
+		box.add_child(_art_tile(info, Vector2(48, 40), uid == _selected_uid, false))
 		var text := UIFactory.vbox(2)
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var title_row := UIFactory.hbox(UIPalette.SP2)
 		title_row.add_child(UIFactory.label(String(info.get("display_name", "Unknown")), "TitleLabel", rarity))
 		if uid == ProfileState.get_equipped_uid(_active_slot):
-			title_row.add_child(UIFactory.icon(&"check", 13, UIPalette.mint))
+			var equipped_icon := UIFactory.icon(&"check", 14, UIPalette.mint)
+			equipped_icon.tooltip_text = "Equipped in this slot"
+			title_row.add_child(equipped_icon)
 		else:
 			var other_slot := _equipped_weapon_slot_for_uid(uid)
 			if other_slot != &"":
-				title_row.add_child(UIFactory.label("IN %s" % String(other_slot).replace("_", " ").to_upper(), "Micro", UIPalette.muted_dim))
+				var other_badge := UIFactory.badge(_slot_short_label(other_slot), UIPalette.muted_dim, &"layers")
+				other_badge.tooltip_text = "Equipped in %s" % _slot_label(other_slot)
+				title_row.add_child(other_badge)
 		text.add_child(title_row)
 		var meta_row := UIFactory.hbox(UIPalette.SP3)
 		meta_row.add_child(_icon_value_tip(&"arrow-up", "L%d" % int(info.get("level", 1)), UIPalette.muted, "Item level"))
@@ -402,17 +482,24 @@ func _build_detail() -> void:
 	var info := ItemFactory.describe(item)
 	var rarity: Color = info.get("rarity_color", UIPalette.muted)
 	var card := UIFactory.panel("Card")
-	card.tooltip_text = String(info.get("description", ""))
+	card.tooltip_text = _item_tooltip(info)
 	var box := UIFactory.vbox(UIPalette.SP3)
-	box.add_child(UIFactory.badge(String(info.get("rarity_name", "Common")).to_upper(), rarity))
-	box.add_child(UIFactory.display_text(String(info.get("display_name", "Unknown")), 26, 600, rarity))
-
+	var hero := UIFactory.hbox(UIPalette.SP3)
+	hero.add_child(_art_tile(info, Vector2(104, 76), false, false))
+	var hero_text := UIFactory.vbox(3)
+	hero_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hero_text.add_child(UIFactory.badge(String(info.get("rarity_name", "Common")).to_upper(), rarity))
+	var name_label := UIFactory.display_text(String(info.get("display_name", "Unknown")), 24, 600, rarity)
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hero_text.add_child(name_label)
 	var sub_row := UIFactory.hbox(UIPalette.SP3)
 	var slot_glyph := UIFactory.icon_or_null(_slot_icon(StringName(info.get("slot", ""))), 13, UIPalette.muted)
 	if slot_glyph != null:
 		sub_row.add_child(slot_glyph)
 	sub_row.add_child(_icon_value_tip(&"arrow-up", "L%d" % int(info.get("level", 1)), UIPalette.muted, "Item level"))
-	box.add_child(sub_row)
+	hero_text.add_child(sub_row)
+	hero.add_child(hero_text)
+	box.add_child(hero)
 	box.add_child(UIFactory.divider(UIPalette.line_soft))
 
 	var weapon_stats: Dictionary = info.get("stats", {})
@@ -445,18 +532,14 @@ func _build_detail() -> void:
 	var affixes: Array = info.get("affixes", [])
 	if not affixes.is_empty():
 		box.add_child(UIFactory.divider(UIPalette.line_soft))
-		var affix_head := UIFactory.hbox(UIPalette.SP2)
-		affix_head.add_child(UIFactory.icon(&"star", 12, UIPalette.mint))
-		affix_head.add_child(UIFactory.eyebrow("Affixes", UIPalette.mint))
-		box.add_child(affix_head)
-		for affix in affixes:
-			var affix_row := _icon_value_tip(&"star", String(affix.get("value_text", "")), UIPalette.mint, "Affix")
-			box.add_child(affix_row)
+		box.add_child(_section_eyebrow(&"star", "Affixes", UIPalette.mint))
+		box.add_child(_affix_chips(affixes))
 
 	var set_id := String(info.get("set_id", ""))
 	if not set_id.is_empty():
-		box.add_child(_icon_value_tip(&"layers", set_id.to_upper(), UIPalette.violet, "Set bonus"))
-		box.add_child(_set_bonus_row(set_id))
+		box.add_child(UIFactory.divider(UIPalette.line_soft))
+		box.add_child(_section_eyebrow(&"layers", "Set Bonus", UIPalette.violet))
+		box.add_child(_set_chips(set_id))
 
 	box.add_child(UIFactory.divider(UIPalette.line_soft))
 	box.add_child(_comparison_block(info, int(info.get("uid", 0))))
@@ -480,35 +563,80 @@ func _build_detail_actions() -> void:
 	var info := ItemFactory.describe(item)
 	var uid := int(info.get("uid", 0))
 	var equipped := uid == ProfileState.get_equipped_uid(_active_slot)
-	var equip := UIFactory.primary_button("Equipped" if equipped else "Equip", &"check")
+	var action_row := UIFactory.hbox(UIPalette.SP2)
+	var equip := UIFactory.icon_button(
+		&"check",
+		"Equipped in %s" % _slot_label(_active_slot) if equipped else "Equip %s in %s." % [String(info.get("display_name", "item")), _slot_label(_active_slot)],
+		"PrimaryButton",
+		48
+	)
 	equip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	equip.disabled = equipped
 	if not equipped:
 		equip.pressed.connect(_on_equip.bind(uid, _active_slot))
-	_detail_actions.add_child(equip)
-
-	var scrap_row := UIFactory.hbox(UIPalette.SP2)
-	var scrap_value := UIFactory.icon_value(&"coins", UIPalette.format_int(int(info.get("value", 0))), UIPalette.amber, 12)
-	scrap_value.tooltip_text = "Scrap returns 25% of the item's value"
-	scrap_row.add_child(scrap_value)
-	var scrap := UIFactory.danger_button("Scrap", &"trash")
-	scrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_row.add_child(equip)
+	var scrap := UIFactory.icon_button(
+		&"trash",
+		"Unequip this item before scrapping it." if equipped else "Scrap for %s salvage (25%% of value)." % UIPalette.format_int(maxi(1, int(int(info.get("value", 0)) * 0.25))),
+		"DangerButton",
+		48
+	)
 	scrap.disabled = equipped
-	scrap.tooltip_text = "Unequip this item before scrapping it." if equipped else "Returns 25% of the item's value."
 	if not equipped:
 		scrap.pressed.connect(_on_scrap.bind(uid))
-	scrap_row.add_child(scrap)
-	_detail_actions.add_child(scrap_row)
+	action_row.add_child(scrap)
+	_detail_actions.add_child(action_row)
+
+	var value_row := UIFactory.hbox(UIPalette.SP2)
+	var scrap_value := UIFactory.icon_value(&"coins", UIPalette.format_int(int(info.get("value", 0))), UIPalette.amber, 12)
+	scrap_value.tooltip_text = "Scrap returns 25% of the item's value"
+	value_row.add_child(scrap_value)
+	value_row.add_child(UIFactory.spacer_h())
+	value_row.add_child(UIFactory.label("25% SALVAGE RETURN", "Micro", UIPalette.muted_dim))
+	_detail_actions.add_child(value_row)
 
 
-func _set_bonus_row(set_id: String) -> HBoxContainer:
+func _section_eyebrow(icon_name: StringName, text: String, accent: Color) -> HBoxContainer:
+	var head := UIFactory.hbox(UIPalette.SP2)
+	head.add_child(UIFactory.icon(icon_name, 12, accent))
+	head.add_child(UIFactory.eyebrow(text, accent))
+	return head
+
+
+func _chip_flow() -> HFlowContainer:
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 6)
+	flow.add_theme_constant_override("v_separation", 6)
+	flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return flow
+
+
+func _affix_chips(affixes: Array) -> HFlowContainer:
+	var flow := _chip_flow()
+	for affix in affixes:
+		var value_text := String(affix.get("value_text", ""))
+		var chip := UIFactory.chip(value_text, UIPalette.mint)
+		chip.tooltip_text = "%s\n%s" % [String(affix.get("display_name", "Affix")), value_text]
+		flow.add_child(chip)
+	return flow
+
+
+func _set_chips(set_id: String) -> HFlowContainer:
+	var flow := _chip_flow()
+	var set_chip := UIFactory.chip(set_id.to_upper(), UIPalette.violet)
+	set_chip.tooltip_text = "Set bonus: equip 3 pieces of %s." % set_id.replace("_", " ").capitalize()
+	flow.add_child(set_chip)
 	var bonuses: Array = ProfileState.SET_BONUSES.get(set_id, [])
 	if bonuses.is_empty():
-		return UIFactory.icon_row(&"layers", "No set bonus data.", "Micro", UIPalette.muted_dim, 12)
+		flow.add_child(UIFactory.chip("NO SET DATA", UIPalette.muted_dim))
+		return flow
 	var parts: PackedStringArray = []
 	for entry in bonuses:
 		parts.append(UIPalette.format_stat_value(StringName(entry.stat), float(entry.value)))
-	return UIFactory.icon_row(&"layers", "3 pieces: " + " · ".join(parts), "Micro", UIPalette.violet, 12)
+	var bonus_chip := UIFactory.chip("3 PCS · " + " · ".join(parts), UIPalette.violet)
+	bonus_chip.tooltip_text = "Equip 3 pieces of %s to activate these bonuses." % set_id.replace("_", " ").capitalize()
+	flow.add_child(bonus_chip)
+	return flow
 
 
 func _comparison_block(info: Dictionary, uid: int) -> VBoxContainer:

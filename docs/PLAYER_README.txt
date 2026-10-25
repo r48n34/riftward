@@ -2,7 +2,30 @@ RIFTWARD
 Drop into the Reach. Build what survives.
 
 A single-player, first-person extraction shooter.
-Version 0.1.0  -  built with Godot 4.7.2
+Version 0.2.0  -  built with Godot 4.7.2
+
+------------------------------------------------------------
+FIRST DROP
+------------------------------------------------------------
+New profiles should start with FIELD TRAINING on the main menu.
+It teaches movement, shooting, abilities, looting and extraction in
+five short stages. You can skip it from the pause menu and replay it
+from the main menu at any time.
+
+Five planets, twelve maps, eighteen weather states and a day/night cycle
+are available from Quick Deploy and the Hub. Pick a mode to change the
+drop: NORMAL, QUICK (2x clock), BLACKOUT (night insertion), GAUNTLET
+(early Collapse) or ONSLAUGHT (elite surge). Water can be swum; lava burns.
+Look for under-reach hatches at vaults, stockades, Choir posts, colony
+ruins and the derelict freighter: descend, break the guardian, return.
+Twenty world events can fire in a run; watch the Reach Event banner for
+weather, convoys, bounty brokers and storm shifts.
+
+The armory, locker, skills, squad and outpost screens are image-first:
+weapons and gear show their silhouettes, Wardens and Driftlings show
+portraits, and the outpost is a clickable 8x8 diorama. Display settings
+(window mode, resolution, render scale, anti-aliasing, frame cap and quality)
+are in Settings -> Display.
 
 ------------------------------------------------------------
 HOW TO PLAY

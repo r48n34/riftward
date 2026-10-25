@@ -16,7 +16,10 @@ signal player_downed(is_downed: bool)
 signal game_paused(is_paused: bool)
 signal settings_changed(key: String, value: Variant)
 signal enemy_killed(enemy_name: String, position: Vector3, is_boss: bool)
-signal world_event(title: String, description: String)
+signal world_event(title: String, description: String, icon: StringName, color: Color)
+signal dungeon_state_changed(active: bool, dungeon_name: String)
+signal hazard_state_changed(state: StringName)
+signal tutorial_stage_changed(stage: Dictionary)
 
 
 func notify(title: String, message: String, severity: StringName = &"info") -> void:

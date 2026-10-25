@@ -8,7 +8,6 @@ A single-player, first-person extraction shooter built in **Godot 4.7.2**.
 
 [**Play free on itch.io**](https://r48n34.itch.io/riftward) · [Features](docs/FEATURES.md) · [Build from source](#build-from-source) · [License](#license)
 
-[![headless-tests](https://github.com/r48n34/riftward/actions/workflows/tests.yml/badge.svg)](https://github.com/r48n34/riftward/actions/workflows/tests.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 [![RIFTWARD](media/hero.png)](https://r48n34.itch.io/riftward)
@@ -21,14 +20,23 @@ Drop into a seeded alien frontier with a loadout you can afford to lose. Take co
 can carry, fight three hostile factions, and get back to the dropship before the Collapse swallows the
 map. What you bring home rebuilds Waystation Kestrel. What you leave behind stays lost.
 
-- **18 minutes, one dropship.** Runs are on a clock, and extraction means holding an open pad for
-  75 seconds while the map closes in around you.
-- **A frontier that reshuffles.** Three biomes, 16–20 points of interest, roads and outposts, rebuilt
-  from a seed on every drop.
-- **Three factions to fight.** 14 enemy archetypes, 6 elites and 3 bosses — weak points, cover, strafes
-  and telegraphed attacks.
-- **A squad and a home.** Recruit four Warden companions and three Driftling pets, then spend what you
-  extract on an eight-module outpost that persists between runs.
+- **One clock, one dropship.** Standard runs are 18 minutes of run time; extraction means holding an
+  open pad for 75 seconds while the map closes in around you.
+- **Five ways to drop.** Normal, Quick (2x clock), Blackout (night insertion), Gauntlet (early
+  Collapse on a 14-minute clock) and Onslaught (elite surge) share the same contract board.
+- **A frontier that reshuffles.** Five planets, twelve maps, 18 weather states and a day/night cycle,
+  roads, outposts and enterable buildings rebuilt from a seed on every drop.
+- **Three factions to fight.** 20 enemy archetypes, 11 elites and 6 bosses — weak points, cover,
+  strafes and telegraphed attacks.
+- **Readable under pressure.** Image-first armory, skills, squad and outpost screens, a Reach Event
+  banner in the HUD, and full display settings (window mode, resolution, render scale, AA, frame cap).
+- **A squad and a home.** Recruit four Warden companions and three Driftling pets, then spend what
+  you extract on an eight-module outpost that persists between runs.
+- **Under the Reach.** Find themed dungeons, descend into procedural interiors, break the guardian
+  and carry the loot back to the surface.
+- **Water and lava.** Wade, swim and burn: basins, shorelines and hazards are part of every map.
+- **First drop.** A five-stage Field Training run teaches movement, combat, abilities, looting and
+  extraction before the Reach is allowed to kill you.
 
 ## Play
 
@@ -76,12 +84,16 @@ templates — see [packaging notes](docs/TECHNICAL.md#15-packaging).
 
 | | |
 |---|---|
-| **World** | Seeded 1.8 km frontier, 3 biomes, 16–20 POIs, 4 map moods |
-| **Combat** | 10 weapons, 4 weapon slots, 12 abilities, 4 ultimates, 16 perks |
-| **Enemies** | 14 archetypes, 6 elites, 3 bosses across 3 factions |
+| **World** | 5 planets, 12 maps, seeded 1.8 km frontier, 18 weather states + day/night, enterable interiors, water and lava |
+| **Run modes** | 5 modes — Normal, Quick (2x clock), Blackout, Gauntlet, Onslaught — plus 13 contracts and 20 world events |
+| **Combat** | 16 weapons, 4 weapon slots, 24 abilities, 4 ultimates, 24 perks |
+| **Enemies** | 20 archetypes, 11 elites, 6 bosses across 3 factions |
+| **Dungeons** | 3 themed under-reach kits, 2–3 entrances per run, procedural rooms, guardians and loot |
 | **Squad** | 4 Warden companions (2 active), 3 Driftling pets |
 | **Progression** | Levels 1–30, 4 disciplines, gear with rarities and affixes |
-| **Outpost** | 8 modules × 3 tiers, persistent between runs |
+| **Outpost** | 8 modules × 3 tiers on a persistent 8×8 diorama layout (layout v2), between runs |
+| **Onboarding** | 5-stage Field Training with HUD guidance, replay and skip |
+| **Options** | Display, audio, gameplay, accessibility and full key rebinding; save format v5 |
 
 Full inventory: [docs/FEATURES.md](docs/FEATURES.md).
 
@@ -104,26 +116,26 @@ Gamepad is supported and every action is rebindable in **Settings → Controls**
 ## Development
 
 ```powershell
-tests\run_all.ps1     # all 10 headless suites
+tests\run_all.ps1     # all 14 headless suites
 ```
 
 ```
 autoload/    App, ContentDB, ProfileState, RunState, EventBus, AudioDirector
-features/    content, player, weapons, abilities, combat, world, ai, companions, run, loot
-ui/          theme, factory, HUD, 13 screens
+features/    content, player, weapons, abilities, combat, world, dungeon, tutorial, ai, companions, run, loot
+ui/          theme, factory, reusable art components, HUD, 13 screens
 assets/      fonts (OFL), SVG icons, world shaders
 tools/       launcher, export, packaging, store and promo art
-tests/       10 headless suites and artifacts
+tests/       14 headless suites and artifacts
 docs/        design, technical, QA, publishing
 ```
 
 More: [design](docs/DESIGN.md) · [architecture](docs/TECHNICAL.md) · [QA report](docs/QA_REPORT.md) ·
-[build plan and status](docs/BUILD_PLAN.md) · [world API](features/world/WORLD_API.md) ·
-[contributing](CONTRIBUTING.md)
+[build plan and status](docs/BUILD_PLAN.md) · [changelog](CHANGELOG.md) · [dev log](docs/DEVLOG.md) ·
+[world API](features/world/WORLD_API.md) · [contributing](CONTRIBUTING.md)
 
 ## Status
 
-In development, single-player and offline.
+**v0.2.0** (2026-10-25) — in development, single-player and offline.
 
 - No co-op, PvP or online play.
 - No mid-run save — quitting during a deployment abandons that run.

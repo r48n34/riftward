@@ -61,6 +61,16 @@ static func build(stats: Dictionary) -> Node3D:
 			_add_box(root, Vector3(0.035, 0.035, 0.3), Vector3(0.0, 0.09, -0.2), glow)
 			_add_box(root, Vector3(0.02, 0.02, 0.18), Vector3(0.055, 0.02, -0.15), glow)
 			_add_box(root, Vector3(0.02, 0.02, 0.18), Vector3(-0.055, 0.02, -0.15), glow)
+		"flamer":
+			# Pressure tank, short wide nozzle and a glowing ignition ring.
+			_add_box(root, Vector3(0.105, 0.13, 0.42), Vector3(0.0, 0.0, -0.1), metal)
+			_add_box(root, Vector3(0.13, 0.16, 0.2), Vector3(0.0, -0.1, 0.1), dark)
+			_add_box(root, Vector3(0.11, 0.11, 0.12), Vector3(0.0, 0.02, 0.18), dark)
+			_add_barrel(root, 0.055, 0.3, Vector3(0.0, 0.03, -0.36), dark)
+			_add_barrel(root, 0.085, 0.08, Vector3(0.0, 0.03, -0.5), dark)
+			_add_box(root, Vector3(0.04, 0.04, 0.04), Vector3(0.0, 0.03, -0.55), glow)
+			_add_box(root, Vector3(0.02, 0.03, 0.22), Vector3(0.065, 0.06, -0.18), glow)
+			_add_box(root, Vector3(0.07, 0.2, 0.08), Vector3(0.0, -0.17, -0.02), dark)
 		"smg":
 			_add_box(root, Vector3(0.075, 0.1, 0.3), Vector3(0.0, 0.0, -0.08), metal)
 			_add_box(root, Vector3(0.055, 0.2, 0.075), Vector3(0.0, -0.14, -0.02), dark)
@@ -85,7 +95,7 @@ static func build(stats: Dictionary) -> Node3D:
 		_add_arms(root, dark)
 	elif style == "knife":
 		_add_knife_arm(root, dark)
-	if style in ["rifle", "carbine", "smg", "shotgun", "pistol", "lmg", "launcher", "arc"]:
+	if style in ["rifle", "carbine", "smg", "shotgun", "pistol", "lmg", "launcher", "arc", "flamer"]:
 		_add_iron_sights(root, style, dark, glow)
 	var muzzle := Marker3D.new()
 	muzzle.name = "Muzzle"
@@ -110,6 +120,8 @@ static func _muzzle_position(style: String) -> Vector3:
 			return Vector3(0.0, 0.06, -0.62)
 		"arc":
 			return Vector3(0.0, 0.03, -0.58)
+		"flamer":
+			return Vector3(0.0, 0.03, -0.62)
 		"smg":
 			return Vector3(0.0, 0.02, -0.4)
 		"knife":
@@ -145,6 +157,7 @@ static func _add_iron_sights(root: Node3D, style: String, dark: Material, glow: 
 		"lmg": {"h": 0.108, "rear": 0.12, "front": -0.36},
 		"launcher": {"h": 0.115, "rear": 0.1, "front": -0.3},
 		"arc": {"h": 0.112, "rear": 0.06, "front": -0.3},
+		"flamer": {"h": 0.11, "rear": 0.04, "front": -0.36},
 	}
 	var spec: Dictionary = all_specs.get(style, {})
 	if spec.is_empty():

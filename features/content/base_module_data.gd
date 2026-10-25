@@ -10,6 +10,7 @@ extends Resource
 @export var costs: PackedInt32Array = PackedInt32Array([100, 250, 600])
 @export var core_costs: PackedInt32Array = PackedInt32Array([0, 1, 3])
 @export var effects: PackedStringArray = PackedStringArray()
+@export var icon: StringName = &"outpost"
 @export var color: Color = Color("f4efe5")
 @export var accent: Color = Color("62e6c3")
 

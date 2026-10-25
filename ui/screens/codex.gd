@@ -6,10 +6,31 @@ extends UIScreen
 const TABS := [
 	{"id": &"records", "label": "Records", "icon": &"book"},
 	{"id": &"enemies", "label": "Bestiary", "icon": &"skull"},
+	{"id": &"planets", "label": "Planets", "icon": &"planet"},
+	{"id": &"weather", "label": "Weather", "icon": &"weather-storm"},
+	{"id": &"operations", "label": "Operations", "icon": &"flag"},
+	{"id": &"dungeons", "label": "Dungeons", "icon": &"dungeon"},
 	{"id": &"rift_mods", "label": "Rift Mods", "icon": &"bolt"},
 	{"id": &"mutators", "label": "Mutators", "icon": &"warning"},
 	{"id": &"guide", "label": "Field Guide", "icon": &"map"},
 ]
+
+const FACTION_ICONS := {
+	&"ashen": &"faction-ashen",
+	&"bloom": &"faction-bloom",
+	&"choir": &"faction-choir",
+}
+
+const STAGE_ICONS := {
+	&"cache": &"cache",
+	&"relay": &"radio",
+	&"hunt": &"crosshair",
+	&"survey": &"map",
+	&"rescue": &"users",
+	&"vault": &"lock",
+	&"dungeon": &"dungeon",
+	&"dungeon_boss": &"skull",
+}
 
 const NOTES := [
 	{
@@ -59,7 +80,7 @@ const CONTROLS := [
 ]
 
 var _tab: StringName = &"records"
-var _tab_host: HBoxContainer = null
+var _tab_host: HFlowContainer = null
 var _content_host: VBoxContainer = null
 var _grid: GridContainer = null
 
@@ -71,7 +92,12 @@ func _compose() -> void:
 
 	var shell := build_hub_shell(&"codex", "Codex", "")
 	var content: VBoxContainer = shell.content
-	_tab_host = UIFactory.hbox(UIPalette.SP1)
+	# Nine tabs must survive a 1280px window; the flow container wraps instead
+	# of clipping the tail of the strip.
+	_tab_host = HFlowContainer.new()
+	_tab_host.add_theme_constant_override("h_separation", UIPalette.SP1)
+	_tab_host.add_theme_constant_override("v_separation", UIPalette.SP1)
+	_tab_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_child(_tab_host)
 	var scroll := UIFactory.vscroll()
 	content.add_child(scroll)
@@ -91,6 +117,14 @@ func _refresh() -> void:
 			_build_records()
 		&"enemies":
 			_build_bestiary()
+		&"planets":
+			_build_planets()
+		&"weather":
+			_build_weather()
+		&"operations":
+			_build_operations()
+		&"dungeons":
+			_build_dungeons()
 		&"rift_mods":
 			_build_rift_mods()
 		&"mutators":
@@ -115,6 +149,18 @@ func _select_tab(tab_id: StringName) -> void:
 	_refresh()
 
 
+## Public tab selection for tests/screenshot harnesses. Unknown ids are ignored.
+func select_tab(tab_id: StringName) -> void:
+	for entry in TABS:
+		if StringName(entry.id) == tab_id:
+			_select_tab(tab_id)
+			return
+
+
+func get_active_tab() -> StringName:
+	return _tab
+
+
 # ---------------------------------------------------------------------------
 # Records
 # ---------------------------------------------------------------------------
@@ -136,6 +182,7 @@ func _build_records() -> void:
 	_grid.add_child(_record_card(&"skull", "Bosses", str(int(records.get("bosses", 0))), "Boss-class signatures ended.", UIPalette.violet))
 	_grid.add_child(_record_card(&"star", "Total salvage", UIPalette.format_int(int(records.get("total_salvage", 0))), "Lifetime extracted value.", UIPalette.sun))
 	_grid.add_child(_record_card(&"check", "Contracts", str(int(ProfileState.data.get("contracts_completed", 0))), "Contracts fully completed.", UIPalette.mint))
+	_grid.add_child(_record_card(&"dungeon", "Dungeon clears", str(int(records.get("dungeons_cleared", 0))), "Under-reach guardians defeated.", UIPalette.violet))
 
 	var level_card := UIFactory.panel("Card")
 	var level_box := UIFactory.vbox(UIPalette.SP2)
@@ -196,12 +243,7 @@ func _build_bestiary() -> void:
 			continue
 		var accent := UIPalette.faction_color(faction)
 		var header := UIFactory.hbox(UIPalette.SP2)
-		var squiggle := ColorRect.new()
-		squiggle.color = accent
-		squiggle.custom_minimum_size = Vector2(4, 18)
-		squiggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		squiggle.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		header.add_child(squiggle)
+		header.add_child(UIFactory.medallion(_faction_icon(faction), 30, accent))
 		header.add_child(UIFactory.heading(String(faction).capitalize(), "H3"))
 		header.tooltip_text = _faction_blurb(faction)
 		_content_host.add_child(header)
@@ -230,6 +272,545 @@ func _build_bestiary() -> void:
 			special_grid.add_child(_enemy_card(enemy, UIPalette.faction_color(enemy.faction)))
 
 
+# ---------------------------------------------------------------------------
+# Planets and dungeons
+# ---------------------------------------------------------------------------
+
+func _build_planets() -> void:
+	var planets := ContentDB.get_planets()
+	_content_host.add_child(UIFactory.section_header("Planets", "%d FRONTIERS" % planets.size(), null, &"planet"))
+	var grid := _make_grid(2 if viewport_width() >= 1360.0 else 1)
+	_content_host.add_child(grid)
+	for planet in planets:
+		grid.add_child(_planet_card(planet))
+
+
+func _planet_card(planet: Dictionary) -> PanelContainer:
+	var planet_id := StringName(planet.get("id", &""))
+	var accent: Color = planet.get("color", UIPalette.mint)
+	var hazard := StringName(planet.get("hazard", &"none"))
+	var card := UIFactory.panel("Card")
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.tooltip_text = "%s — %s\nHazard: %s\nBiomes: %s" % [
+		String(planet.get("display_name", "Planet")),
+		String(planet.get("subtitle", "")),
+		_hazard_label(hazard),
+		", ".join((planet.get("biome_names", []) as Array)),
+	]
+	var box := UIFactory.vbox(UIPalette.SP2)
+
+	var head := UIFactory.hbox(UIPalette.SP2)
+	var portrait := UIPlanetPortrait.new()
+	portrait.configure(planet_id, 72, true)
+	portrait.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(portrait)
+	var title_box := UIFactory.vbox(2)
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_row := UIFactory.hbox(UIPalette.SP2)
+	name_row.add_child(UIFactory.display_text(String(planet.get("display_name", "Planet")), 22, 650, UIPalette.ivory))
+	name_row.add_child(UIFactory.spacer_h())
+	name_row.add_child(UIFactory.badge(_hazard_label(hazard), _hazard_color(hazard), _hazard_icon(hazard)))
+	title_box.add_child(name_row)
+	title_box.add_child(UIFactory.label(String(planet.get("subtitle", "")), "BodySmall", UIPalette.muted))
+	var biomes := UIFactory.hbox(6)
+	for biome_name in planet.get("biome_names", []):
+		biomes.add_child(UIFactory.chip(String(biome_name), accent))
+	title_box.add_child(biomes)
+	head.add_child(title_box)
+	box.add_child(head)
+
+	var weather_row := HFlowContainer.new()
+	weather_row.add_theme_constant_override("h_separation", UIPalette.SP3)
+	weather_row.add_theme_constant_override("v_separation", UIPalette.SP1)
+	for weather_id in planet.get("weather_pool", []):
+		var weather: Dictionary = ContentDB.get_weather_def(StringName(weather_id))
+		if weather.is_empty():
+			continue
+		var weather_chip := UIFactory.icon_value(
+			StringName(weather.get("icon", &"weather-sun")),
+			String(weather.get("display_name", "")),
+			weather.get("color", UIPalette.muted),
+			12
+		)
+		weather_chip.tooltip_text = _weather_tooltip(weather)
+		weather_row.add_child(weather_chip)
+	box.add_child(weather_row)
+
+	var map_list := UIFactory.vbox(6)
+	for preset in ContentDB.get_map_presets_for_planet(planet_id):
+		map_list.add_child(_planet_map_row(preset, hazard))
+	box.add_child(map_list)
+
+	var themes := UIFactory.hbox(UIPalette.SP2)
+	themes.add_child(UIFactory.icon_value(&"dungeon", "UNDER-REACH", UIPalette.violet, 12))
+	for theme_id in planet.get("dungeon_themes", []):
+		var theme: Dictionary = ContentDB.get_dungeon_theme(StringName(theme_id))
+		if theme.is_empty():
+			continue
+		themes.add_child(UIFactory.chip(String(theme.get("display_name", "")), theme.get("accent", UIPalette.violet)))
+	box.add_child(themes)
+	card.add_child(box)
+	return card
+
+
+func _planet_map_row(preset: Dictionary, planet_hazard: StringName) -> HBoxContainer:
+	var map_id := StringName(preset.get("id", &""))
+	var hazard := _map_hazard(preset, planet_hazard)
+	var row := UIFactory.hbox(UIPalette.SP2)
+	row.tooltip_text = "%s — %s\nHazard: %s\nWeather pool: %s" % [
+		String(preset.get("display_name", "Map")),
+		String(preset.get("subtitle", "")),
+		_hazard_label(hazard),
+		_map_weather_text(preset),
+	]
+	var thumb := UIMapThumbnail.new()
+	thumb.configure(map_id, Vector2(112, 63), true)
+	thumb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(thumb)
+	var info := UIFactory.vbox(2)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_child(UIFactory.label(String(preset.get("display_name", "Map")), "TitleLabel", UIPalette.ivory))
+	info.add_child(UIFactory.label(String(preset.get("subtitle", "")), "Micro", UIPalette.muted))
+	var chips := UIFactory.hbox(UIPalette.SP3)
+	chips.add_child(_stat_icon(_hazard_icon(hazard), _hazard_label(hazard), _hazard_color(hazard), "Map hazard"))
+	chips.add_child(_stat_icon(&"layers", "%d POI" % int(preset.get("extra_pois", 0)), UIPalette.muted_dim, "Extra points of interest"))
+	info.add_child(chips)
+	row.add_child(info)
+	return row
+
+
+# ---------------------------------------------------------------------------
+# Weather
+# ---------------------------------------------------------------------------
+
+func _build_weather() -> void:
+	var defs: Array = ContentDB.get_all_weather_defs()
+	var header := UIFactory.section_header("Weather States", "%d ENVIRONMENTAL CONDITIONS" % defs.size(), null, &"weather-storm")
+	header.tooltip_text = "Every authored weather state, its vision/movement modifiers, hazard tag and the planet pools it can roll in."
+	_content_host.add_child(header)
+	var grid := _make_grid()
+	_content_host.add_child(grid)
+	var planets := ContentDB.get_planets()
+	for weather in defs:
+		grid.add_child(_weather_card(weather, planets))
+
+
+func _weather_card(weather: Dictionary, planets: Array) -> PanelContainer:
+	var weather_id := StringName(weather.get("id", &""))
+	var accent: Color = weather.get("color", UIPalette.mint)
+	var hazard := StringName(weather.get("hazard", &"none"))
+	var particle := StringName(weather.get("particle", &"none"))
+	var used_on := _weather_planets(weather_id, planets)
+	var card := UIFactory.panel("Card")
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(0, 148)
+	card.tooltip_text = _weather_tooltip(weather) + "\nPlanet pools: " + used_on
+	var box := UIFactory.vbox(UIPalette.SP2)
+
+	var head := UIFactory.hbox(UIPalette.SP2)
+	head.add_child(UIFactory.medallion(StringName(weather.get("icon", &"weather-sun")), 44, accent))
+	var title_box := UIFactory.vbox(1)
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_child(UIFactory.display_text(String(weather.get("display_name", "Weather")), 18, 650, accent))
+	var tags := UIFactory.hbox(6)
+	tags.add_child(UIFactory.badge(_hazard_label(hazard), _hazard_color(hazard), _hazard_icon(hazard)))
+	tags.add_child(UIFactory.chip(String(particle).capitalize(), UIPalette.muted_dim))
+	title_box.add_child(tags)
+	head.add_child(title_box)
+	box.add_child(head)
+
+	var stats := UIFactory.hbox(UIPalette.SP3)
+	stats.add_child(_stat_icon(&"eye", "%d%%" % int(round(float(weather.get("vision_mult", 1.0)) * 100.0)), UIPalette.mint, "Vision multiplier"))
+	stats.add_child(_stat_icon(&"bolt", "%d%%" % int(round(float(weather.get("move_mult", 1.0)) * 100.0)), UIPalette.amber, "Movement multiplier"))
+	stats.add_child(_stat_icon(&"weather-fog", "×%.1f" % float(weather.get("fog_mult", 1.0)), UIPalette.muted, "Fog density multiplier"))
+	stats.add_child(_stat_icon(&"warning", "%d%%" % int(round(float(weather.get("lightning", 0.0)) * 100.0)), UIPalette.violet, "Lightning strike chance"))
+	box.add_child(stats)
+
+	var detail := UIFactory.hbox(UIPalette.SP3)
+	detail.add_child(_stat_icon(_particle_icon(particle), "%s ×%d" % [String(particle).capitalize(), int(weather.get("particle_amount", 0))], accent, "Particle volume"))
+	var planet_row := UIFactory.hbox(5)
+	var planet_glyph := UIFactory.icon(&"planet", 12, UIPalette.violet)
+	planet_glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	planet_row.add_child(planet_glyph)
+	var planet_label := UIFactory.label(used_on, "Micro", UIPalette.violet)
+	planet_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	planet_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	planet_row.add_child(planet_label)
+	planet_row.tooltip_text = "Planet pools: " + used_on
+	detail.add_child(planet_row)
+	box.add_child(detail)
+	card.add_child(box)
+	return card
+
+
+func _weather_planets(weather_id: StringName, planets: Array) -> String:
+	var names: PackedStringArray = []
+	for planet in planets:
+		var pool: Array = planet.get("weather_pool", [])
+		for pool_id in pool:
+			if StringName(pool_id) == weather_id:
+				names.append(String(planet.get("display_name", "Planet")))
+				break
+	return ", ".join(names) if not names.is_empty() else "No planet pool"
+
+
+func _weather_tooltip(weather: Dictionary) -> String:
+	var hazard := StringName(weather.get("hazard", &"none"))
+	var particle := StringName(weather.get("particle", &"none"))
+	return "Vision %d%% · Movement %d%% · Fog ×%.1f\nParticles: %s (%d) · Lightning %d%%\nHazard: %s" % [
+		int(round(float(weather.get("vision_mult", 1.0)) * 100.0)),
+		int(round(float(weather.get("move_mult", 1.0)) * 100.0)),
+		float(weather.get("fog_mult", 1.0)),
+		String(particle).capitalize(),
+		int(weather.get("particle_amount", 0)),
+		int(round(float(weather.get("lightning", 0.0)) * 100.0)),
+		_hazard_label(hazard),
+	]
+
+
+func _particle_icon(particle: StringName) -> StringName:
+	match particle:
+		&"rain":
+			return &"weather-rain"
+		&"dust", &"smoke":
+			return &"weather-fog"
+		&"ash":
+			return &"weather-ash"
+		&"embers":
+			return &"ember"
+		&"spores":
+			return &"weather-toxic"
+		&"snow":
+			return &"weather-snow"
+		&"sparks":
+			return &"weather-ion"
+		_:
+			return &"weather-sun"
+
+
+# ---------------------------------------------------------------------------
+# Operations: modes, contracts, target roster
+# ---------------------------------------------------------------------------
+
+func _build_operations() -> void:
+	_build_game_modes()
+	_build_contracts()
+	_build_target_roster()
+
+
+func _build_game_modes() -> void:
+	var modes: Array = ContentDB.get_game_modes()
+	var header := UIFactory.section_header("Game Modes", "%d DEPLOYMENT PACES" % modes.size(), null, &"timer")
+	header.tooltip_text = "Selectable modes reshape the run clock, storm timing, enemy pressure and rewards."
+	_content_host.add_child(header)
+	var grid := _make_grid()
+	_content_host.add_child(grid)
+	for mode in modes:
+		grid.add_child(_mode_card(mode))
+
+
+func _mode_card(mode: Dictionary) -> PanelContainer:
+	var mode_id := StringName(mode.get("id", &"normal"))
+	var accent: Color = mode.get("color", UIPalette.mint)
+	var card := UIFactory.panel("Card")
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(0, 148)
+	var description := String(mode.get("description", ""))
+	card.tooltip_text = description if not description.is_empty() else String(mode.get("tag", "Deployment mode"))
+	var box := UIFactory.vbox(UIPalette.SP2)
+
+	var head := UIFactory.hbox(UIPalette.SP2)
+	head.add_child(UIFactory.medallion(StringName(mode.get("icon", &"timer")), 42, accent))
+	var title_box := UIFactory.vbox(1)
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_child(UIFactory.display_text(String(mode.get("display_name", "Normal")).to_upper(), 18, 650, UIPalette.ivory))
+	title_box.add_child(UIFactory.label(String(mode.get("tag", "STANDARD")), "Micro", accent))
+	head.add_child(title_box)
+	box.add_child(head)
+
+	var clock := ContentDB.get_mode_clock(mode_id)
+	var time_row := UIFactory.hbox(UIPalette.SP4)
+	time_row.add_child(_stat_icon(&"timer", clock, UIPalette.amber, "Run clock start"))
+	time_row.add_child(_stat_icon(&"flag", UIPalette.format_duration(float(mode.get("run_duration", 1080.0))), UIPalette.muted, "Run duration"))
+	time_row.add_child(_stat_icon(&"bolt", "×%.0f" % float(mode.get("time_scale", 1.0)), UIPalette.violet, "Clock speed"))
+	box.add_child(time_row)
+
+	var stats := UIFactory.hbox(UIPalette.SP3)
+	stats.add_child(_stat_icon(&"users", "×%.2f" % float(mode.get("density_mult", 1.0)), UIPalette.amber, "Enemy density"))
+	stats.add_child(_stat_icon(&"coins", "×%.2f" % float(mode.get("reward_mult", 1.0)), UIPalette.sun, "Reward multiplier"))
+	stats.add_child(_stat_icon(&"star", "+%d%%" % int(round(float(mode.get("elite_bonus", 0.0)) * 100.0)), UIPalette.violet, "Elite chance"))
+	box.add_child(stats)
+
+	var extra := UIFactory.hbox(UIPalette.SP3)
+	if int(mode.get("max_hostiles_delta", 0)) != 0:
+		extra.add_child(_stat_icon(&"skull", "+%d" % int(mode.get("max_hostiles_delta", 0)), UIPalette.danger, "Extra simultaneous hostiles"))
+	if float(mode.get("loot_bonus", 0.0)) > 0.0:
+		extra.add_child(_stat_icon(&"cache", "+%d%%" % int(round(float(mode.get("loot_bonus", 0.0)) * 100.0)), UIPalette.mint, "Loot bonus"))
+	if float(mode.get("storm_fraction", 0.0)) > 0.0:
+		extra.add_child(_stat_icon(&"warning", "%d%% STORM" % int(round(float(mode.get("storm_fraction", 0.0)) * 100.0)), UIPalette.danger, "Storm starts at this fraction of the run"))
+	if float(mode.get("start_time", -1.0)) >= 0.0:
+		extra.add_child(_stat_icon(&"moon", "TOD %.2f" % float(mode.get("start_time", 0.0)), UIPalette.violet, "Start time of day"))
+	if extra.get_child_count() > 0:
+		box.add_child(extra)
+	card.add_child(box)
+	return card
+
+
+func _build_contracts() -> void:
+	var header := UIFactory.section_header(
+		"Contracts",
+		"%d OPERATION BRIEFS" % ContentDB.contracts.size(),
+		null,
+		&"flag"
+	)
+	header.tooltip_text = "Contracts define objectives, threat requirements, staged operations and reward bands."
+	_content_host.add_child(header)
+	var grid := _make_grid()
+	_content_host.add_child(grid)
+	var contracts: Array = ContentDB.contracts.values()
+	contracts.sort_custom(func(a: ContractData, b: ContractData) -> bool:
+		if a.required_threat == b.required_threat:
+			return a.display_name < b.display_name
+		return a.required_threat < b.required_threat
+	)
+	for contract in contracts:
+		if contract is ContractData:
+			grid.add_child(_contract_card(contract))
+
+
+func _contract_card(contract: ContractData) -> PanelContainer:
+	var accent: Color = contract.color
+	var card := UIFactory.panel("Card")
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(0, 154)
+	var lines: PackedStringArray = []
+	if not contract.description.is_empty():
+		lines.append(contract.description)
+	if not contract.flavor.is_empty():
+		lines.append(contract.flavor)
+	lines.append("Objectives: %s" % _contract_objectives_text(contract))
+	card.tooltip_text = "\n".join(lines)
+
+	var box := UIFactory.vbox(UIPalette.SP2)
+	var head := UIFactory.hbox(UIPalette.SP2)
+	head.add_child(UIFactory.medallion(contract.icon, 40, accent))
+	var title_box := UIFactory.vbox(1)
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_child(UIFactory.display_text(contract.display_name, 18, 650, UIPalette.ivory))
+	var tags := UIFactory.hbox(6)
+	tags.add_child(UIFactory.badge("T%d" % contract.required_threat, _threat_color(contract.required_threat), &"skull"))
+	if contract.is_staged():
+		tags.add_child(UIFactory.badge("%d STAGES" % contract.stage_count(), UIPalette.mint, &"layers"))
+	else:
+		tags.add_child(UIFactory.badge("%d OBJECTIVES" % contract.objective_count(), UIPalette.muted, &"flag"))
+	title_box.add_child(tags)
+	head.add_child(title_box)
+	box.add_child(head)
+
+	var stages := UIFactory.hbox(UIPalette.SP3)
+	if contract.is_staged():
+		for stage in contract.stages:
+			if not (stage is Dictionary):
+				continue
+			var stage_data := stage as Dictionary
+			var stage_type := StringName(stage_data.get("type", &"cache"))
+			var count := int(stage_data.get("count", 1))
+			stages.add_child(_stat_icon(
+				_stage_icon(stage_type),
+				"×%d" % count,
+				UIPalette.mint,
+				String(stage_data.get("title", String(stage_type).capitalize()))
+			))
+	else:
+		for type_name in contract.objective_types:
+			var stage_type := StringName(type_name)
+			stages.add_child(_stat_icon(_stage_icon(stage_type), String(stage_type).capitalize(), UIPalette.mint, "Objective"))
+	box.add_child(stages)
+
+	var rewards := UIFactory.hbox(UIPalette.SP3)
+	rewards.add_child(_stat_icon(&"coins", UIPalette.format_int(contract.base_reward), UIPalette.amber, "Salvage reward"))
+	rewards.add_child(_stat_icon(&"arrow-up", str(contract.xp_reward), UIPalette.mint, "XP reward"))
+	if contract.core_reward > 0:
+		rewards.add_child(_stat_icon(&"core", str(contract.core_reward), UIPalette.violet, "Core reward"))
+	if contract.gear_rolls > 0:
+		rewards.add_child(_stat_icon(&"cache", str(contract.gear_rolls), UIPalette.sun, "Gear rolls"))
+	box.add_child(rewards)
+	card.add_child(box)
+	return card
+
+
+func _build_target_roster() -> void:
+	var elites: Array = ContentDB.get_elite_enemies()
+	var bosses: Array = ContentDB.get_boss_enemies()
+	var header := UIFactory.section_header(
+		"Target Roster",
+		"%d ELITES · %d BOSSES" % [elites.size(), bosses.size()],
+		null,
+		&"crosshair"
+	)
+	header.tooltip_text = "Every elite and boss signature in the Reach, tagged by faction sigil with role, health, damage and salvage."
+	_content_host.add_child(header)
+
+	if not elites.is_empty():
+		_content_host.add_child(_subsection("Elite Signatures", &"star", UIPalette.amber))
+		var elite_grid := _make_grid()
+		_content_host.add_child(elite_grid)
+		for enemy in elites:
+			elite_grid.add_child(_target_card(enemy as EnemyData, false))
+
+	if not bosses.is_empty():
+		_content_host.add_child(_subsection("Boss Signatures", &"skull", UIPalette.danger))
+		var boss_grid := _make_grid()
+		_content_host.add_child(boss_grid)
+		for enemy in bosses:
+			boss_grid.add_child(_target_card(enemy as EnemyData, true))
+
+
+func _target_card(enemy: EnemyData, boss: bool) -> PanelContainer:
+	var accent := UIPalette.faction_color(enemy.faction)
+	var card := UIFactory.panel("CardInset")
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.custom_minimum_size = Vector2(0, 120)
+	card.tooltip_text = "%s — %s\n%s" % [
+		enemy.display_name,
+		String(enemy.role).capitalize(),
+		_faction_blurb(enemy.faction),
+	]
+	var box := UIFactory.vbox(UIPalette.SP1)
+
+	var head := UIFactory.hbox(UIPalette.SP2)
+	head.add_child(UIFactory.medallion(_faction_icon(enemy.faction), 38, accent))
+	var title_box := UIFactory.vbox(1)
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_child(UIFactory.label(enemy.display_name, "TitleLabel", UIPalette.ivory))
+	var tags := UIFactory.hbox(6)
+	tags.add_child(UIFactory.badge("BOSS" if boss else "ELITE", UIPalette.danger if boss else UIPalette.amber, &"skull" if boss else &"star"))
+	if boss and enemy.boss_phases > 1:
+		tags.add_child(UIFactory.badge("%d PHASES" % enemy.boss_phases, UIPalette.violet, &"layers"))
+	title_box.add_child(tags)
+	head.add_child(title_box)
+	box.add_child(head)
+
+	var chips := UIFactory.hbox(UIPalette.SP3)
+	chips.add_child(_stat_icon(&"target", String(enemy.role).capitalize(), accent, "Role"))
+	chips.add_child(_stat_icon(&"heart-pulse", str(int(enemy.max_health)), UIPalette.mint, "Health"))
+	chips.add_child(_stat_icon(&"crosshair", str(int(enemy.damage)), UIPalette.ivory, "Damage"))
+	chips.add_child(_stat_icon(&"coins", str(enemy.salvage), UIPalette.amber, "Salvage"))
+	box.add_child(chips)
+
+	var extras := UIFactory.hbox(UIPalette.SP3)
+	extras.add_child(_stat_icon(&"arrow-up", str(enemy.xp), UIPalette.mint, "XP"))
+	extras.add_child(_stat_icon(&"bolt", "%.1f" % enemy.move_speed, UIPalette.muted, "Move speed"))
+	if enemy.armor > 0.0:
+		extras.add_child(_stat_icon(&"shield", str(int(enemy.armor)), UIPalette.blue, "Armor"))
+	box.add_child(extras)
+	card.add_child(box)
+	return card
+
+
+func _build_dungeons() -> void:
+	_content_host.add_child(UIFactory.section_header("Under-Reach Dungeons", "", null, &"dungeon"))
+	var grid := GridContainer.new()
+	grid.add_theme_constant_override("h_separation", UIPalette.SP3)
+	grid.add_theme_constant_override("v_separation", UIPalette.SP3)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.columns = 2 if viewport_width() >= 1360.0 else 1
+	_content_host.add_child(grid)
+	for theme in ContentDB.get_dungeon_themes():
+		var accent: Color = theme.get("accent", UIPalette.violet)
+		var card := UIFactory.panel("Card")
+		var box := UIFactory.vbox(UIPalette.SP2)
+		var head := UIFactory.hbox(UIPalette.SP2)
+		var glyph := UIFactory.icon_or_null(&"dungeon", 18, accent)
+		if glyph != null:
+			glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			head.add_child(glyph)
+		head.add_child(UIFactory.display_text(String(theme.get("display_name", "Dungeon")), 21, 650, UIPalette.ivory))
+		head.add_child(UIFactory.spacer_h())
+		head.add_child(UIFactory.badge("UNDER-REACH", accent))
+		box.add_child(head)
+		box.add_child(UIFactory.label(String(theme.get("description", "")), "BodySmall", UIPalette.muted))
+		var stats := UIFactory.hbox(UIPalette.SP4)
+		stats.add_child(UIFactory.icon_value(&"layers", "%d–%d ROOMS" % [int(theme.get("room_min", 5)), int(theme.get("room_max", 8))], UIPalette.mint, 12))
+		stats.add_child(UIFactory.icon_value(&"cache", "%d LOOT" % int(theme.get("loot_rolls", 3)), UIPalette.amber, 12))
+		var boss: EnemyData = ContentDB.get_enemy(StringName(theme.get("boss_id", &"")))
+		if boss != null:
+			stats.add_child(UIFactory.icon_value(&"skull", boss.display_name.to_upper(), UIPalette.danger, 12))
+		box.add_child(stats)
+		var pool_names: PackedStringArray = []
+		for enemy_id in theme.get("enemy_pool", []):
+			var enemy: EnemyData = ContentDB.get_enemy(StringName(enemy_id))
+			if enemy != null:
+				pool_names.append(enemy.display_name)
+		box.add_child(UIFactory.label("HOSTILES · " + ", ".join(pool_names), "Micro", UIPalette.muted_dim))
+		card.add_child(box)
+		grid.add_child(card)
+
+
+# ---------------------------------------------------------------------------
+# Shared card helpers
+# ---------------------------------------------------------------------------
+
+func _make_grid(columns: int = 0, separation: int = UIPalette.SP3) -> GridContainer:
+	var grid := GridContainer.new()
+	grid.add_theme_constant_override("h_separation", separation)
+	grid.add_theme_constant_override("v_separation", separation)
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.columns = columns if columns > 0 else _grid_columns()
+	return grid
+
+
+func _subsection(title: String, icon_name: StringName, accent: Color) -> HBoxContainer:
+	var row := UIFactory.hbox(UIPalette.SP2)
+	var glyph := UIFactory.icon_or_null(icon_name, 14, accent)
+	if glyph != null:
+		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(glyph)
+	row.add_child(UIFactory.eyebrow(title, accent))
+	return row
+
+
+func _stat_icon(icon_name: StringName, value_text: String, accent: Color, tooltip: String) -> HBoxContainer:
+	var row := UIFactory.icon_value(icon_name, value_text, accent, 12)
+	row.tooltip_text = tooltip
+	return row
+
+
+func _stage_icon(stage_type: StringName) -> StringName:
+	return STAGE_ICONS.get(stage_type, &"flag")
+
+
+func _contract_objectives_text(contract: ContractData) -> String:
+	var parts := PackedStringArray()
+	if contract.is_staged():
+		for stage in contract.stages:
+			if stage is Dictionary:
+				var stage_data := stage as Dictionary
+				parts.append("%s ×%d" % [String(stage_data.get("type", "objective")).capitalize(), int(stage_data.get("count", 1))])
+	else:
+		for type_name in contract.objective_types:
+			parts.append(String(type_name).capitalize())
+	if parts.is_empty() and not contract.objective_label.is_empty():
+		parts.append(contract.objective_label)
+	return " → ".join(parts) if not parts.is_empty() else "Objective"
+
+
+func _threat_color(threat: int) -> Color:
+	match clampi(threat, 1, 4):
+		1:
+			return UIPalette.mint
+		2:
+			return UIPalette.blue
+		3:
+			return UIPalette.amber
+		_:
+			return UIPalette.danger
+
+
+func _faction_icon(faction: StringName) -> StringName:
+	return FACTION_ICONS.get(faction, &"skull")
+
+
 func _faction_blurb(faction: StringName) -> String:
 	match faction:
 		&"ashen":
@@ -242,17 +823,69 @@ func _faction_blurb(faction: StringName) -> String:
 			return ""
 
 
+func _hazard_label(hazard: StringName) -> String:
+	if hazard == &"none" or hazard == &"":
+		return "STABLE"
+	return String(hazard).replace("_", " ").to_upper()
+
+
+func _hazard_color(hazard: StringName) -> Color:
+	match hazard:
+		&"heat":
+			return UIPalette.amber
+		&"cold", &"deep_water":
+			return UIPalette.blue
+		&"toxic":
+			return UIPalette.mint
+		&"rift":
+			return UIPalette.violet
+		_:
+			return UIPalette.muted_dim
+
+
+func _hazard_icon(hazard: StringName) -> StringName:
+	match hazard:
+		&"heat":
+			return &"lava"
+		&"cold":
+			return &"weather-snow"
+		&"toxic":
+			return &"weather-toxic"
+		&"deep_water":
+			return &"water"
+		&"rift":
+			return &"weather-void"
+		_:
+			return &"shield-check"
+
+
+func _map_hazard(preset: Dictionary, fallback: StringName) -> StringName:
+	for weather_id in preset.get("weather_pool", []):
+		var weather: Dictionary = ContentDB.get_weather_def(StringName(weather_id))
+		var hazard := StringName(weather.get("hazard", &"none"))
+		if hazard != &"none":
+			return hazard
+	return fallback
+
+
+func _map_weather_text(preset: Dictionary) -> String:
+	var pool: Array = preset.get("weather_pool", [])
+	if pool.is_empty():
+		pool = ContentDB.get_planet(StringName(preset.get("planet_id", &""))).get("weather_pool", [])
+	var names := PackedStringArray()
+	for weather_id in pool:
+		var weather: Dictionary = ContentDB.get_weather_def(StringName(weather_id))
+		if not weather.is_empty():
+			names.append(String(weather.get("display_name", "")))
+	return ", ".join(names) if not names.is_empty() else "None"
+
+
 func _enemy_card(enemy: EnemyData, accent: Color) -> PanelContainer:
 	var card := UIFactory.panel("CardInset")
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var box := UIFactory.vbox(UIPalette.SP2)
 	var head := UIFactory.hbox(UIPalette.SP2)
-	var swatch := ColorRect.new()
-	swatch.color = enemy.body_color
-	swatch.custom_minimum_size = Vector2(10, 10)
-	swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	head.add_child(swatch)
+	head.add_child(UIFactory.medallion(_faction_icon(enemy.faction), 28, UIPalette.faction_color(enemy.faction), 0.5, false))
 	head.add_child(UIFactory.label(enemy.display_name, "TitleLabel"))
 	head.add_child(UIFactory.spacer_h())
 	if enemy.boss:

@@ -1,9 +1,10 @@
-﻿class_name AbilityManager
+class_name AbilityManager
 extends Node
 ## Scene-scoped ability caster. Cooldown truth lives here and ticks on the
 ## physics clock; effects are resolved through a small, readable registry.
 
 signal abilities_changed
+signal ability_cast(slot: int, ability_id: StringName)
 
 var player: Node = null
 var abilities: Array[AbilityData] = []
@@ -115,6 +116,7 @@ func cast_ability(slot: int) -> bool:
 	_execute_effect(data, slot)
 	AudioDirector.play_sfx(&"ability", -3.0)
 	abilities_changed.emit()
+	ability_cast.emit(slot, data.id)
 	if player.has_method("update_hud"):
 		player.call("update_hud")
 	EventBus.notification_requested.emit(data.display_name, data.description, &"ability")
@@ -157,6 +159,22 @@ func _execute_effect(data: AbilityData, slot: int) -> void:
 			_effect_turret(data, true)
 		&"ultimate_hyperfocus":
 			_effect_hyperfocus(data)
+		&"ember_ward":
+			_effect_ember_ward(data)
+		&"tide_step":
+			_effect_tide_step(data)
+		&"bulwark_stance":
+			_effect_bulwark_stance(data)
+		&"quake_step":
+			_effect_quake_step(data)
+		&"smoke_veil":
+			_effect_smoke_veil(data)
+		&"repair_drone":
+			_effect_repair_drone(data)
+		&"mine_layer":
+			_effect_mine_layer(data)
+		&"zip_line":
+			_effect_zip_line(data)
 		_:
 			EventBus.notify("Unknown ability", "No effect registered for " + String(data.effect_id), &"error")
 
@@ -339,6 +357,128 @@ func _effect_hyperfocus(data: AbilityData) -> void:
 	player.call("apply_temporary_modifier", &"hyperfocus_handling", StatKeys.HANDLING, &"add", 0.5, data.duration)
 	player.call("apply_temporary_modifier", &"hyperfocus_crit", StatKeys.CRIT_MULT, &"add", 0.75, data.duration)
 	CombatVFX.ring(_fx_parent(), player.global_position, 2.0, data.color, 0.9)
+
+
+func _effect_ember_ward(data: AbilityData) -> void:
+	if player.has_method("set_hazard_resist"):
+		player.call("set_hazard_resist", data.magnitude, data.duration)
+	player.call("apply_temporary_modifier", &"ember_armor", StatKeys.ARMOR, &"add", 18.0, data.duration)
+	for enemy in _enemies_in_radius(player.global_position, data.radius):
+		_damage_enemy(enemy, data.magnitude * 30.0, StatKeys.DMG_BURN, StatKeys.STATUS_BURN)
+	CombatVFX.ring(_fx_parent(), player.global_position, data.radius, data.color, 0.7)
+
+
+func _effect_tide_step(data: AbilityData) -> void:
+	var forward: Vector3 = player.call("get_forward")
+	var flat := Vector3(forward.x, 0.0, forward.z).normalized()
+	var target: Vector3 = player.global_position + flat * maxf(4.0, data.magnitude)
+	var origin: Vector3 = player.global_position + Vector3.UP * 0.9
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + flat * maxf(4.0, data.magnitude), 1 | 4 | 8)
+	query.exclude = [player.get_rid()]
+	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		var hit_position: Vector3 = hit["position"]
+		target = hit_position - flat * 0.8
+	player.call("teleport_to", Vector3(target.x, player.global_position.y + 0.05, target.z))
+	if player.has_method("set_fluid_mobility"):
+		player.call("set_fluid_mobility", 1.35, data.duration)
+	for enemy in _enemies_in_radius(target, data.radius):
+		_damage_enemy(enemy, 12.0, StatKeys.DMG_SHOCK, StatKeys.STATUS_SLOW)
+	CombatVFX.beam_burst(_fx_parent(), origin, target, data.color)
+	CombatVFX.ring(_fx_parent(), target, data.radius, data.color, 0.5)
+
+
+func _effect_bulwark_stance(data: AbilityData) -> void:
+	player.call("apply_temporary_modifier", &"bulwark_armor", StatKeys.ARMOR, &"add", 35.0, data.duration)
+	var health = player.call("get_health_component")
+	if health != null and health.has_method("restore_shield"):
+		health.restore_shield(25.0)
+	CombatVFX.ring(_fx_parent(), player.global_position, 2.2, data.color, data.duration)
+	CombatVFX.ring(_fx_parent(), player.global_position, 1.1, data.color, data.duration * 0.7)
+
+
+func _effect_quake_step(data: AbilityData) -> void:
+	var forward: Vector3 = player.call("get_forward")
+	var flat_forward := Vector3(forward.x, 0.0, forward.z).normalized()
+	for enemy in get_tree().get_nodes_in_group("enemy_ai"):
+		if not enemy is Node3D:
+			continue
+		var offset: Vector3 = (enemy as Node3D).global_position - player.global_position
+		if offset.length() > data.range:
+			continue
+		if flat_forward.dot(Vector3(offset.x, 0.0, offset.z).normalized()) < 0.2:
+			continue
+		CombatVFX.impact(_fx_parent(), (enemy as Node3D).global_position + Vector3.UP, Vector3.UP, data.color)
+		_damage_enemy(enemy, data.magnitude, StatKeys.DMG_KINETIC, StatKeys.STATUS_SLOW)
+		if enemy.has_method("apply_pull"):
+			enemy.call("apply_pull", player.global_position + flat_forward * 3.0, 4.0, 0.6)
+	CombatVFX.ring(_fx_parent(), player.global_position + flat_forward * 3.0, data.radius, data.color, 0.6)
+
+
+func _effect_smoke_veil(data: AbilityData) -> void:
+	var point := _aim_point(data.range)
+	var parent := _fx_parent()
+	var cloud := Node3D.new()
+	parent.add_child(cloud)
+	cloud.global_position = point
+	CombatVFX.explosion(cloud, point, data.radius, data.color)
+	CombatVFX.ring(cloud, point, data.radius, data.color, data.duration)
+	var timer := get_tree().create_timer(data.duration)
+	timer.timeout.connect(func() -> void:
+		if is_instance_valid(cloud):
+			cloud.queue_free()
+	)
+	for enemy in _enemies_in_radius(point, data.radius):
+		if enemy.has_method("set_blinded"):
+			enemy.call("set_blinded", data.duration)
+	player.call("set_cloaked", minf(1.5, data.duration))
+
+
+func _effect_repair_drone(data: AbilityData) -> void:
+	var ticks := 6
+	var interval := maxf(0.25, data.duration / float(ticks))
+	for i in ticks:
+		await get_tree().create_timer(interval).timeout
+		if not is_inside_tree() or player == null or not is_instance_valid(player):
+			return
+		var health = player.call("get_health_component")
+		if health != null and health.has_method("heal"):
+			health.heal(data.magnitude)
+			health.restore_shield(data.magnitude * 0.6)
+		for node in get_tree().get_nodes_in_group("allies"):
+			if node.has_method("heal"):
+				node.call("heal", data.magnitude * 0.6)
+		for node in get_tree().get_nodes_in_group("pets"):
+			if node.has_method("heal"):
+				node.call("heal", data.magnitude * 0.6)
+		CombatVFX.ring(_fx_parent(), player.global_position, 2.0, data.color, 0.4)
+
+
+func _effect_mine_layer(data: AbilityData) -> void:
+	var forward: Vector3 = player.call("get_forward")
+	var point := _aim_point(data.range)
+	var count := maxi(1, data.projectile_count)
+	for i in count:
+		var angle := TAU * float(i) / float(count)
+		var offset := Vector3(cos(angle) * 2.2, 0.0, sin(angle) * 2.2)
+		_spawn_deployable(&"mine", point + offset, forward, data.duration, data.magnitude, data.color)
+	CombatVFX.ring(_fx_parent(), point, 3.0, data.color, 0.5)
+
+
+func _effect_zip_line(data: AbilityData) -> void:
+	var origin: Vector3 = player.call("get_camera_position")
+	var forward: Vector3 = player.call("get_forward")
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + forward * data.range, 1 | 8)
+	query.exclude = [player.get_rid()]
+	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
+	var target: Vector3 = origin + forward * data.range
+	if not hit.is_empty():
+		var hit_position: Vector3 = hit["position"]
+		target = hit_position - forward * 1.2
+	player.call("teleport_to", Vector3(target.x, maxf(target.y, player.global_position.y) + 0.2, target.z))
+	player.call("set_invulnerable", 0.3)
+	CombatVFX.beam_burst(_fx_parent(), origin, target, data.color)
+	CombatVFX.ring(_fx_parent(), target, 1.6, data.color, 0.4)
 
 
 func _spawn_deployable(mode: StringName, position: Vector3, forward: Vector3, lifetime: float, damage: float, color: Color) -> void:

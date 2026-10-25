@@ -24,7 +24,10 @@ extends Resource
 @export var accent_color: Color = Color("ffb866")
 @export var eye_color: Color = Color("ff6e6e")
 @export var body_scale: float = 1.0
-@export var style: StringName = &"humanoid"  # humanoid, beast, flyer, heavy, titan
+@export var style: StringName = &"humanoid"  # humanoid, beast, flyer, heavy, titan, swimmer, drone
+## Preferred environment. Spawners avoid putting land-bound enemies in lava and
+## water-bound enemies on dry ground where possible.
+@export var habitat: StringName = &"land"  # land, water, lava, any
 @export var weakpoint_mult: float = 1.8
 @export var behavior_flags: PackedStringArray = PackedStringArray()
 @export var boss_phases: int = 1

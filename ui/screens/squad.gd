@@ -81,14 +81,25 @@ func _build_header() -> void:
 	var card := UIFactory.panel("CardInset")
 	card.tooltip_text = "Wardens bring their own weapon and signature ability. Higher ranks improve their combat behaviour."
 	var row := UIFactory.hbox(UIPalette.SP5)
-	row.add_child(UIFactory.stat_block(&"users", "Active Wardens", "%d/2" % ProfileState.get_active_allies().size(), UIPalette.mint, 20))
+	row.add_child(_medallion_stat(&"users", "Active Wardens", "%d/2" % ProfileState.get_active_allies().size(), UIPalette.mint))
 	var pet := ContentDB.get_pet(ProfileState.get_active_pet())
-	row.add_child(UIFactory.stat_block(&"paw", "Companion", pet.display_name if pet != null else "None", UIPalette.amber, 20))
-	row.add_child(UIFactory.stat_block(&"core", "Cores available", UIPalette.format_int(ProfileState.get_cores()), UIPalette.violet, 20))
-	row.add_child(UIFactory.stat_block(&"shield", "Barracks", "T%d" % ProfileState.get_base_tier(&"barracks"), UIPalette.blue, 20))
+	row.add_child(_medallion_stat(&"paw", "Companion", pet.display_name if pet != null else "None", UIPalette.amber))
+	row.add_child(_medallion_stat(&"core", "Cores available", UIPalette.format_int(ProfileState.get_cores()), UIPalette.violet))
+	row.add_child(_medallion_stat(&"shield", "Barracks", "T%d" % ProfileState.get_base_tier(&"barracks"), UIPalette.blue))
 	row.add_child(UIFactory.spacer_h())
 	card.add_child(row)
 	_header_host.add_child(card)
+
+
+func _medallion_stat(icon_name: StringName, label_text: String, value_text: String, accent: Color) -> HBoxContainer:
+	var row := UIFactory.hbox(UIPalette.SP2)
+	row.tooltip_text = label_text
+	row.add_child(UIFactory.medallion(icon_name, 32, accent, 0.5))
+	var text := UIFactory.vbox(2)
+	text.add_child(UIFactory.label(label_text.to_upper(), "StatLabel"))
+	text.add_child(UIFactory.number_text(value_text, 18, accent))
+	row.add_child(text)
+	return row
 
 
 func _build_active_strip() -> void:
@@ -112,83 +123,194 @@ func _slot_badge(index: int) -> PanelContainer:
 func _active_slot_card(ally: AllyData, index: int) -> PanelContainer:
 	var card := UIFactory.panel("Card")
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	card.custom_minimum_size = Vector2(0, 156)
+	card.custom_minimum_size = Vector2(0, 200)
 	var box := UIFactory.vbox(UIPalette.SP2)
-	box.add_child(_slot_badge(index))
+	var top := UIFactory.hbox(UIPalette.SP2)
+	top.add_child(_slot_badge(index))
+	top.add_child(UIFactory.spacer_h())
+	box.add_child(top)
 	if ally == null:
-		var empty := UIFactory.empty_state(&"users", "Empty", "Assign a Warden below.")
+		var empty := _empty_portrait(&"users", "Empty", "Assign a Warden below.", UIPalette.muted_dim)
 		empty.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		box.add_child(empty)
 		card.add_child(box)
 		return card
 	var accent := ally.color
-	var head := UIFactory.hbox(UIPalette.SP2)
-	var glyph := UIFactory.icon(&"users", 18, accent)
-	glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	head.add_child(glyph)
-	head.add_child(UIFactory.display_text(ally.display_name, 22, 600, accent))
-	head.add_child(UIFactory.spacer_h())
-	head.add_child(UIFactory.badge(String(ally.role).capitalize(), accent))
-	box.add_child(head)
+	var row := UIFactory.hbox(UIPalette.SP3)
+	var portrait := _ally_portrait(ally, 92)
+	row.add_child(UIFactory.art_frame(portrait, accent, true))
+	var text := UIFactory.vbox(4)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_row := UIFactory.hbox(UIPalette.SP2)
+	var name_label := UIFactory.display_text(ally.display_name, 22, 600, accent)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_row.add_child(name_label)
+	name_row.add_child(UIFactory.badge(String(ally.role).capitalize(), accent))
+	text.add_child(name_row)
 	var weapon := ContentDB.get_weapon(ally.weapon_id)
 	var ability := ContentDB.get_ability(ally.ability_effect)
-	var weapon_row := UIFactory.icon_value(&"target", weapon.display_name if weapon != null else String(ally.weapon_id), UIPalette.muted, 13)
-	weapon_row.tooltip_text = "Weapon"
-	box.add_child(weapon_row)
-	var ability_row := UIFactory.icon_value(&"bolt", ability.display_name if ability != null else String(ally.ability_effect), UIPalette.muted, 13)
-	ability_row.tooltip_text = "Signature ability"
-	box.add_child(ability_row)
-	box.add_child(UIFactory.spacer_v())
+	text.add_child(_weapon_row(weapon, accent))
+	text.add_child(_ability_row(ability, accent))
+	text.add_child(UIFactory.spacer_v())
 	var footer := UIFactory.hbox(UIPalette.SP2)
 	var rank_pips := UIFactory.pips(ProfileState.get_ally_rank(ally.id), 5, accent)
 	rank_pips.tooltip_text = "Warden rank %d / 5" % ProfileState.get_ally_rank(ally.id)
 	footer.add_child(rank_pips)
 	footer.add_child(UIFactory.spacer_h())
-	var remove := UIFactory.ghost_button("Stand down")
+	var remove := UIFactory.ghost_button("Stand down", &"close")
 	remove.custom_minimum_size = Vector2(0, 30)
 	remove.disabled = ProfileState.get_active_allies().size() <= 1
-	remove.tooltip_text = "At least one Warden must remain on active duty."
+	remove.tooltip_text = "Stand %s down. At least one Warden must remain on active duty." % ally.display_name
 	remove.pressed.connect(func() -> void: _remove_ally(ally.id))
 	footer.add_child(remove)
-	box.add_child(footer)
+	text.add_child(footer)
+	row.add_child(text)
+	box.add_child(row)
 	card.add_child(box)
 	return card
 
 
 func _active_pet_card() -> PanelContainer:
 	var card := UIFactory.panel("Card")
-	card.custom_minimum_size = Vector2(0, 156)
+	card.custom_minimum_size = Vector2(0, 200)
 	var box := UIFactory.vbox(UIPalette.SP2)
+	var top := UIFactory.hbox(UIPalette.SP2)
 	var slot_badge := UIFactory.badge("", UIPalette.muted, &"paw")
 	slot_badge.tooltip_text = "Companion slot"
-	box.add_child(slot_badge)
+	top.add_child(slot_badge)
+	top.add_child(UIFactory.spacer_h())
+	box.add_child(top)
 	var pet := ContentDB.get_pet(ProfileState.get_active_pet())
 	if pet == null:
-		box.add_child(UIFactory.empty_state(&"paw", "No companion", "Select a Driftling below."))
+		box.add_child(_empty_portrait(&"paw", "No companion", "Select a Driftling below.", UIPalette.muted_dim))
 		card.add_child(box)
 		return card
 	var accent := pet.color
-	var head := UIFactory.hbox(UIPalette.SP2)
-	var glyph := UIFactory.icon(&"paw", 18, accent)
-	glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	head.add_child(glyph)
-	head.add_child(UIFactory.display_text(pet.display_name, 22, 600, accent))
-	head.add_child(UIFactory.spacer_h())
-	head.add_child(UIFactory.badge(String(pet.role).capitalize(), accent))
-	box.add_child(head)
 	card.tooltip_text = pet.description
-	box.add_child(UIFactory.spacer_v())
+	var row := UIFactory.hbox(UIPalette.SP3)
+	row.add_child(UIFactory.art_frame(_pet_portrait(pet, 92), accent, true))
+	var text := UIFactory.vbox(4)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_row := UIFactory.hbox(UIPalette.SP2)
+	var name_label := UIFactory.display_text(pet.display_name, 22, 600, accent)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_row.add_child(name_label)
+	name_row.add_child(UIFactory.badge(String(pet.role).capitalize(), accent))
+	text.add_child(name_row)
+	var effect_row := UIFactory.icon_value(&"bolt", String(pet.effect).replace("_", " ").capitalize(), accent, 12)
+	effect_row.tooltip_text = "Ability effect"
+	text.add_child(effect_row)
+	var cooldown_row := UIFactory.icon_value(&"timer", "%.0fs" % pet.cooldown, UIPalette.muted, 12)
+	cooldown_row.tooltip_text = "Ability cooldown"
+	text.add_child(cooldown_row)
+	text.add_child(UIFactory.spacer_v())
 	var footer := UIFactory.hbox(UIPalette.SP2)
 	var rank_pips := UIFactory.pips(ProfileState.get_pet_rank(pet.id), 5, accent)
 	rank_pips.tooltip_text = "Companion rank %d / 5" % ProfileState.get_pet_rank(pet.id)
 	footer.add_child(rank_pips)
 	footer.add_child(UIFactory.spacer_h())
-	var effect_row := UIFactory.icon_value(&"bolt", String(pet.effect).replace("_", " ").capitalize(), UIPalette.muted, 12)
-	effect_row.tooltip_text = "Ability effect"
-	footer.add_child(effect_row)
-	box.add_child(footer)
+	footer.add_child(UIFactory.label("ACTIVE", "Micro", UIPalette.mint))
+	text.add_child(footer)
+	row.add_child(text)
+	box.add_child(row)
 	card.add_child(box)
 	return card
+
+
+func _empty_portrait(icon_name: StringName, title_text: String, hint_text: String, accent: Color) -> VBoxContainer:
+	var box := UIFactory.vbox(UIPalette.SP2)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	var placeholder := UIFactory.medallion(icon_name, 84, accent, 0.45, false)
+	placeholder.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	box.add_child(placeholder)
+	var title := UIFactory.label(title_text, "TitleLabel", UIPalette.muted_dim)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var hint := UIFactory.label(hint_text, "Micro", UIPalette.muted_dim)
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(hint)
+	return box
+
+
+func _ally_portrait(ally: AllyData, diameter: int) -> UIAllyPortrait:
+	var portrait := UIAllyPortrait.new()
+	portrait.configure(ally.id, diameter)
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	portrait.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_hold_art_size(portrait, Vector2(diameter, diameter))
+	return portrait
+
+
+func _pet_portrait(pet: PetData, diameter: int) -> UIPetArt:
+	var portrait := UIPetArt.new()
+	portrait.configure(pet.id, diameter)
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	portrait.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	portrait.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_hold_art_size(portrait, Vector2(diameter, diameter))
+	return portrait
+
+
+func _weapon_row(weapon: WeaponData, accent: Color) -> HBoxContainer:
+	var row := UIFactory.hbox(UIPalette.SP2)
+	row.tooltip_text = "Weapon"
+	var art := UIItemArt.new()
+	art.configure(
+		"weapon",
+		_weapon_slot_id(weapon),
+		String(weapon.id) if weapon != null else "",
+		UIPalette.muted_dim,
+		accent,
+		true
+	)
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_hold_art_size(art, Vector2(30, 24))
+	row.add_child(art)
+	var name_label := UIFactory.label(weapon.display_name if weapon != null else "Unknown weapon", "BodySmall", UIPalette.muted)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	row.add_child(name_label)
+	return row
+
+
+func _ability_row(ability: AbilityData, accent: Color) -> HBoxContainer:
+	var row := UIFactory.hbox(UIPalette.SP2)
+	row.tooltip_text = "Signature ability"
+	if ability == null:
+		row.add_child(UIFactory.label("No signature ability", "BodySmall", UIPalette.muted_dim))
+		return row
+	row.add_child(UIFactory.medallion(UIIcons.ability_icon(ability.icon), 24, ability.color, 0.5))
+	var name_label := UIFactory.label(ability.display_name, "BodySmall", ability.color)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	row.add_child(name_label)
+	var cooldown := UIFactory.icon_value(&"timer", "%.0fs" % ability.cooldown, UIPalette.muted, 11)
+	cooldown.tooltip_text = "Ability cooldown"
+	row.add_child(cooldown)
+	return row
+
+
+func _weapon_slot_id(weapon: WeaponData) -> String:
+	if weapon == null:
+		return "primary"
+	return "primary" if String(weapon.slot) == "primary_2" else String(weapon.slot)
+
+
+func _hold_art_size(control: Control, min_size: Vector2) -> void:
+	control.custom_minimum_size = min_size
+	if control.is_inside_tree():
+		control.custom_minimum_size = min_size
+	else:
+		control.ready.connect(_apply_art_size.bind(control, min_size), CONNECT_ONE_SHOT)
+
+
+func _apply_art_size(control: Control, min_size: Vector2) -> void:
+	if is_instance_valid(control):
+		control.custom_minimum_size = min_size
 
 
 func _build_wardens() -> void:
@@ -206,14 +328,19 @@ func _warden_card(ally: AllyData) -> PanelContainer:
 	card.custom_minimum_size = Vector2(0, 204)
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.tooltip_text = String(ally.description) + "\n" + String(ally.passive_text)
-	var box := UIFactory.vbox(UIPalette.SP2)
+	var row := UIFactory.hbox(UIPalette.SP3)
 
+	var portrait_frame := UIFactory.art_frame(_ally_portrait(ally, 64), accent, active)
+	portrait_frame.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	row.add_child(portrait_frame)
+
+	var box := UIFactory.vbox(UIPalette.SP2)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var head := UIFactory.hbox(UIPalette.SP2)
-	var glyph := UIFactory.icon(&"users", 20, accent)
-	glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	head.add_child(glyph)
-	head.add_child(UIFactory.display_text(ally.display_name, 22, 600, UIPalette.ivory))
-	head.add_child(UIFactory.spacer_h())
+	var name_label := UIFactory.display_text(ally.display_name, 22, 600, UIPalette.ivory)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	head.add_child(name_label)
 	if active:
 		var active_badge := UIFactory.badge("", UIPalette.mint, &"check")
 		active_badge.tooltip_text = "Active in your squad"
@@ -223,12 +350,8 @@ func _warden_card(ally: AllyData) -> PanelContainer:
 	box.add_child(UIFactory.divider(UIPalette.line_soft))
 	var weapon := ContentDB.get_weapon(ally.weapon_id)
 	var ability := ContentDB.get_ability(ally.ability_effect)
-	var weapon_row := UIFactory.icon_value(&"target", weapon.display_name if weapon != null else "Unknown weapon", accent, 13)
-	weapon_row.tooltip_text = "Weapon"
-	box.add_child(weapon_row)
-	var ability_row := UIFactory.icon_value(&"bolt", ability.display_name if ability != null else "Unknown ability", UIPalette.ivory, 13)
-	ability_row.tooltip_text = "Signature ability"
-	box.add_child(ability_row)
+	box.add_child(_weapon_row(weapon, accent))
+	box.add_child(_ability_row(ability, accent))
 	box.add_child(UIFactory.spacer_v())
 
 	var footer := UIFactory.hbox(UIPalette.SP2)
@@ -251,7 +374,8 @@ func _warden_card(ally: AllyData) -> PanelContainer:
 	assign.pressed.connect(func() -> void: _toggle_ally(ally.id))
 	footer.add_child(assign)
 	box.add_child(footer)
-	card.add_child(box)
+	row.add_child(box)
+	card.add_child(row)
 	return card
 
 
@@ -270,13 +394,15 @@ func _pet_card(pet: PetData) -> PanelContainer:
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	card.custom_minimum_size = Vector2(0, 178)
 	card.tooltip_text = pet.description
+	var row := UIFactory.hbox(UIPalette.SP3)
+	row.add_child(UIFactory.art_frame(_pet_portrait(pet, 64), accent, active))
 	var box := UIFactory.vbox(UIPalette.SP2)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var head := UIFactory.hbox(UIPalette.SP2)
-	var glyph := UIFactory.icon(&"paw", 18, accent)
-	glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	head.add_child(glyph)
-	head.add_child(UIFactory.display_text(pet.display_name, 20, 600, UIPalette.ivory))
-	head.add_child(UIFactory.spacer_h())
+	var name_label := UIFactory.display_text(pet.display_name, 20, 600, UIPalette.ivory)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	head.add_child(name_label)
 	if active:
 		var active_badge := UIFactory.badge("", UIPalette.mint, &"check")
 		active_badge.tooltip_text = "Active companion"
@@ -310,7 +436,8 @@ func _pet_card(pet: PetData) -> PanelContainer:
 	choose.pressed.connect(func() -> void: _set_active_pet(pet.id))
 	footer.add_child(choose)
 	box.add_child(footer)
-	card.add_child(box)
+	row.add_child(box)
+	card.add_child(row)
 	return card
 
 

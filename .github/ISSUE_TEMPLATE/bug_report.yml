@@ -14,8 +14,8 @@ body:
     id: version
     attributes:
       label: Version or commit
-      description: "Release version (0.1.0), or the commit hash if you built from source."
-      placeholder: "0.1.0 / a1b2c3d"
+      description: "Release version (0.2.0), or the commit hash if you built from source."
+      placeholder: "0.2.0 / a1b2c3d"
     validations:
       required: true
 

@@ -13,6 +13,7 @@ var ui: UIRoot = null
 var stub: UIStubPlayer = null
 var failures: Array[String] = []
 var checks := 0
+var _only_filter := ""
 
 
 func _ready() -> void:
@@ -27,6 +28,8 @@ func _ready() -> void:
 			var parts := text.trim_prefix("size=").split("x")
 			if parts.size() == 2:
 				size_override = Vector2i(int(parts[0]), int(parts[1]))
+		elif text.begins_with("only="):
+			_only_filter = text.trim_prefix("only=")
 	if size_override != Vector2i.ZERO:
 		DisplayServer.window_set_size(size_override)
 		print("[UI-DEMO] window size -> %s" % str(size_override))
@@ -87,6 +90,21 @@ func _run_selftest() -> void:
 	ui.show_screen(&"quick_deploy", {})
 	await _frames(3)
 	_check(ui.current_screen() == &"quick_deploy", "quick deploy preflight opens")
+	var quick_screen = ui._get_screen(&"quick_deploy")
+	_check(quick_screen != null and quick_screen.has_method("get_selected_map_id"), "quick deploy exposes map selection")
+	if quick_screen != null and quick_screen.has_method("get_selected_map_id"):
+		_check(quick_screen.call("get_selected_map_id") != &"", "quick deploy preselects a map")
+		_check(quick_screen.call("get_selected_planet_id") != &"", "quick deploy preselects a planet")
+		var mode_ids: Array = quick_screen.call("get_mode_ids")
+		_check(mode_ids.size() == 5, "quick deploy exposes all 5 modes (%d)" % mode_ids.size())
+		_check(&"normal" in mode_ids and &"quick" in mode_ids and &"blackout" in mode_ids
+			and &"gauntlet" in mode_ids and &"onslaught" in mode_ids, "quick deploy mode ids are complete")
+		var selected_planet := StringName(quick_screen.call("get_selected_planet_id"))
+		var expected_maps := ContentDB.get_map_presets_for_planet(selected_planet).size()
+		_check(int(quick_screen.call("get_map_card_count")) == expected_maps,
+			"quick deploy shows every map for the selected planet")
+		_check(_count_type(quick_screen, "planet") > 0, "quick deploy renders planet portraits")
+		_check(_count_type(quick_screen, "map") > 0, "quick deploy renders map thumbnails")
 	ui.navigate_back()
 	await _frames(2)
 	_check(ui.current_screen() == &"main_menu", "quick deploy back returns to the main menu")
@@ -105,15 +123,130 @@ func _run_selftest() -> void:
 	await _frames(1)
 	_check(ui.current_screen() == &"hub", "navigate_back returns to hub")
 
-	# Loading overlay.
-	ui.show_loading("Preparing the Reach", 0.2)
-	await _frames(2)
-	ui.update_loading(0.55, "Sculpting canyons")
-	ui.update_loading(0.9, "Baking navigation")
-	await _frames(1)
-	ui.hide_loading()
+	# --- visual-first expansion screens --------------------------------------
+	ui.show_screen(&"loadout", {"return_to": &"hub"})
+	await _frames(3)
+	var loadout_screen = ui._get_screen(&"loadout")
+	_check(_count_type(loadout_screen, "item") > 0, "Loadout renders item art")
+	var loadout_art := _first_item_art(loadout_screen)
+	_check(loadout_art != null and not String(loadout_art.call("get_art_key")).is_empty(),
+		"Loadout item art resolves an art key")
+	ui.show_screen(&"locker", {"return_to": &"hub"})
+	await _frames(3)
+	var locker_screen = ui._get_screen(&"locker")
+	_check(_count_type(locker_screen, "warden") > 0, "Locker renders Warden previews")
+	_check(_count_type(locker_screen, "warden_compact") > 0, "Locker uses compact cosmetic previews")
+	ui.show_screen(&"skills", {"return_to": &"hub"})
+	await _frames(3)
+	var skills_screen = ui._get_screen(&"skills")
+	_check(_count_type(skills_screen, "medallion") >= 4, "Skills renders discipline/ability medallions")
+	ui.show_screen(&"squad", {"return_to": &"hub"})
+	await _frames(3)
+	var squad_screen = ui._get_screen(&"squad")
+	_check(_count_type(squad_screen, "ally") > 0, "Squad renders Warden portraits")
+	_check(_count_type(squad_screen, "pet") > 0, "Squad renders Driftling art")
+	ui.show_screen(&"outpost", {"return_to": &"hub"})
+	await _frames(4)
+	var outpost_screen = ui._get_screen(&"outpost")
+	var diorama = outpost_screen.call("get_diorama") if outpost_screen != null and outpost_screen.has_method("get_diorama") else null
+	_check(diorama is UIOutpostDiorama, "Outpost exposes its diorama")
+	if diorama is UIOutpostDiorama:
+		var board: Rect2 = diorama.call("get_board_rect")
+		_check(board.size.x > 40.0 and board.size.y > 40.0, "outpost diorama has a drawable board")
+		var layout: Dictionary = diorama.call("get_layout")
+		_check(layout.size() == 8, "outpost diorama lays out all 8 modules")
+		var module_art: Array = diorama.call("get_module_art")
+		_check(module_art.size() == 8, "outpost diorama renders 8 module structures")
+		var all_inside := true
+		var hit_ok := true
+		for module_id in layout.keys():
+			var module_rect: Rect2 = diorama.call("get_module_rect", module_id)
+			all_inside = all_inside and module_rect.size.x > 0.0 and board.encloses(module_rect)
+			var hit := StringName(diorama.call("get_module_at", module_rect.get_center()))
+			hit_ok = hit_ok and hit == StringName(module_id)
+		_check(all_inside, "every outpost module rect stays inside the board")
+		_check(hit_ok, "outpost hit selection resolves each module centre")
+		diorama.set("selected_module", &"foundry")
+		await _frames(1)
+		_check(StringName(diorama.call("get_selected_module")) == &"foundry", "outpost diorama exposes selection state")
+		_check("LAYOUT v2" in _label_texts(outpost_screen), "outpost shows the layout v2 badge")
+	ui.show_screen(&"settings", {"return_to": &"hub"})
+	await _frames(4)
+	var settings_screen = ui._get_screen(&"settings")
+	_check(settings_screen != null and settings_screen.has_method("get_control"), "settings exposes test accessors")
+	if settings_screen != null and settings_screen.has_method("get_control"):
+		for key in ["window_mode", "resolution", "vsync", "render_scale", "anti_aliasing", "fps_limit", "quality", "ui_scale"]:
+			_check(settings_screen.call("get_control", key) != null, "settings display control exists: %s" % key)
+		var window_option := settings_screen.call("get_option_control", "window_mode") as OptionButton
+		var resolution_option := settings_screen.call("get_option_control", "resolution") as OptionButton
+		var aa_option := settings_screen.call("get_option_control", "anti_aliasing") as OptionButton
+		var fps_option := settings_screen.call("get_option_control", "fps_limit") as OptionButton
+		_check(window_option != null and window_option.item_count == App.get_window_mode_options().size(),
+			"window mode option lists every mode")
+		_check(resolution_option != null and resolution_option.item_count == App.get_resolution_options().size(),
+			"resolution option lists every resolution")
+		_check(aa_option != null and aa_option.item_count == App.get_aa_options().size(),
+			"anti-aliasing option lists every mode")
+		_check(fps_option != null and fps_option.item_count == App.get_fps_options().size(),
+			"frame-rate option lists every cap")
+		_check(window_option != null and String(window_option.get_meta("setting_key", "")) == "window_mode",
+			"settings control carries its setting key meta")
+		_check(String(App.get_display_summary()).length() > 0, "settings can show the display summary")
 	ui.show_hub()
 	await _frames(1)
+	_check(ui.current_screen() == &"hub", "hub returns after the expansion screens")
+
+	# Loading cinema: four acts, boss dossier, skip and reduce-motion fallback.
+	var loading_brief := LoadingBrief.build(&"salvage_sweep", 20260225, 2, &"contact", &"quick", &"ashen_shelf")
+	ui.show_loading("Preparing the Reach", 0.05, loading_brief)
+	await _frames(3)
+	var loading = ui.get_loading_screen()
+	_check(loading != null, "loading cinema instantiates")
+	if loading != null:
+		_check(loading.get_active_act() == &"boss", "loading opens on the threat signature")
+		_check(loading.get_act_titles().size() == 4, "loading cinema declares four acts")
+		_check("Salvage Sweep" in String(loading.get_operation_text()), "loading rail shows the operation")
+		_check(not String(loading.get_radio_text()).is_empty(), "loading radio carries the threat line")
+		var boss_info: Dictionary = loading.get_boss_info()
+		_check(not boss_info.is_empty(), "loading brief resolves a boss signature")
+		var expected_boss := String(boss_info.get("name", ""))
+		_check(not expected_boss.is_empty(), "boss signature has a display name (%s)" % expected_boss)
+		loading.update_loading(0.5, "Sculpting canyons")
+		await _frames(2)
+		_check(loading.get_progress_value() >= 0.5, "loading accepts deployment progress")
+		loading.set_act_id(&"boss")
+		await _frames(3)
+		_check(loading.get_active_act() == &"boss", "loading cinema holds on the boss reveal")
+		var boss_shot: CinemaBossShot = loading.get_shot(&"boss")
+		_check(boss_shot != null and boss_shot.visible, "boss shot is on screen")
+		_check(boss_shot != null and boss_shot.get_boss_name() == expected_boss, "boss dossier matches the brief")
+		if boss_shot != null:
+			var name_label := boss_shot.find_child("BossName", true, false) as Label
+			_check(name_label != null and name_label.text == expected_boss.to_upper(), "boss name plate renders")
+			var phase_pips := boss_shot.find_child("PhasePips", true, false) as HBoxContainer
+			_check(phase_pips != null and phase_pips.get_child_count() >= 3, "boss dossier shows phase pips")
+			var counter_text := boss_shot.find_child("CounterIntelText", true, false) as Label
+			_check(counter_text != null and not counter_text.text.is_empty(), "boss dossier shows counter-intel")
+		loading.set_act_id(&"rift")
+		await _frames(2)
+		_check(loading.get_active_act() == &"rift", "loading cinema cuts to the rift breach")
+		loading.skip_cinematic()
+		await _frames(2)
+		_check(loading.is_cinematic_skipped() and loading.is_static_mode(), "skip collapses to a static brief")
+		_check(not loading.get_skip_button().visible, "skip control hides once used")
+		ui.hide_loading()
+		await _frames(1)
+		_check(ui.get_loading_screen() != null and not ui.get_loading_screen().visible, "hide_loading dismisses the cinema")
+		# Reduce motion must open the static boss briefing instead of footage.
+		App.set_setting("reduce_motion", true)
+		await _frames(1)
+		ui.show_loading("Preparing the Reach", 0.3, loading_brief)
+		await _frames(2)
+		loading = ui.get_loading_screen()
+		_check(loading != null and loading.is_static_mode(), "reduce motion opens a static boss brief")
+		ui.hide_loading()
+		App.set_setting("reduce_motion", false)
+		await _frames(1)
 
 	# Results overlay.
 	var result := {
@@ -128,6 +261,9 @@ func _run_selftest() -> void:
 		"map_name": "Ashen Shelf",
 		"mode_id": "quick",
 		"mode_name": "Quick",
+		"mode_clock": "09:00",
+		"mode_tag": "2x CLOCK",
+		"run_duration": 1080.0,
 		"time_scale": 2.0,
 		"real_elapsed": 306.5,
 		"elapsed": 613.0,
@@ -163,6 +299,41 @@ func _run_selftest() -> void:
 		_check(hud.has_method("get_scope") and hud.call("get_scope") != null, "HUD exposes the precision scope")
 		_check(hud.has_method("get_aim_sight") and hud.call("get_aim_sight") != null, "HUD exposes the ADS aim sight")
 		_check(hud.has_method("set_mission_trackers"), "HUD accepts mission trackers")
+		_check(hud.has_method("get_world_chip") and hud.call("get_world_chip") != null, "HUD exposes the weather/clock chip")
+		_check(hud.has_method("get_tutorial_panel") and hud.call("get_tutorial_panel") != null, "HUD exposes the training card")
+		_check(hud.has_method("get_dungeon_panel") and hud.call("get_dungeon_panel") != null, "HUD exposes the dungeon banner")
+		_check(hud.has_method("get_hazard_overlay") and hud.call("get_hazard_overlay") != null, "HUD exposes the hazard overlay")
+		EventBus.tutorial_stage_changed.emit({
+			"complete": false, "index": 1, "total": 5, "title": "AIM & FIRE",
+			"body": "Land three hits.", "hint": "RMB · LMB", "progress": 0.5,
+		})
+		await _frames(2)
+		var tutorial_panel := hud.call("get_tutorial_panel") as Control
+		_check(tutorial_panel != null and tutorial_panel.visible, "training card responds to stage updates")
+		EventBus.tutorial_stage_changed.emit({"complete": true})
+		await _frames(1)
+		_check(tutorial_panel != null and not tutorial_panel.visible, "training card hides when training ends")
+		EventBus.hazard_state_changed.emit(&"water")
+		await _frames(1)
+		var hazard_overlay := hud.call("get_hazard_overlay") as ColorRect
+		_check(hazard_overlay != null and hazard_overlay.color.a > 0.01, "hazard overlay tints water")
+		EventBus.hazard_state_changed.emit(&"none")
+		EventBus.dungeon_state_changed.emit(true, "Rift Vault")
+		await _frames(1)
+		var dungeon_panel := hud.call("get_dungeon_panel") as Control
+		_check(dungeon_panel != null and dungeon_panel.visible, "dungeon banner shows in the under-reach")
+		EventBus.dungeon_state_changed.emit(false, "")
+		EventBus.world_event.emit(
+			"Rift Cyclone",
+			"A cyclone of folded space is carving across the sector. It is leaving something behind.",
+			&"weather-storm",
+			UIPalette.violet
+		)
+		await _frames(2)
+		var world_event_panel := hud.call("get_world_event_panel") as Control
+		_check(world_event_panel != null and world_event_panel.visible, "Reach Event banner shows on world_event")
+		_check(world_event_panel != null and "RIFT CYCLONE" in _label_texts(world_event_panel),
+			"Reach Event banner shows the event title")
 		if hud.has_method("set_mission_trackers"):
 			hud.call("set_mission_trackers", [
 				{"title": "Recover caches", "icon": &"cache", "color": UIPalette.mint, "world_position": Vector3(40.0, 0.0, 20.0), "progress": 1, "total": 4, "kind": &"cache"},
@@ -294,18 +465,92 @@ func _run_selftest() -> void:
 	_check(ui.current_screen() == &"hub", "accessibility settings apply live")
 
 	# Reality check on authored content the UI depends on.
-	_check(ContentDB.weapons.size() >= 10, "ContentDB weapons available")
-	_check(ContentDB.contracts.size() >= 6, "ContentDB contracts available")
-	_check(ContentDB.perks.size() >= 16, "ContentDB perks available")
+	_check(ContentDB.weapons.size() == 16, "ContentDB weapons available")
+	_check(ContentDB.contracts.size() == 13, "ContentDB contracts available")
+	_check(ContentDB.perks.size() == 24, "ContentDB perks available")
 	_check(ContentDB.cosmetics.size() >= 20, "ContentDB cosmetics available")
+	_check(ContentDB.planets.size() == 5 and ContentDB.map_presets.size() == 12, "ContentDB planets/maps available")
+	_check(ContentDB.game_modes.size() == 5 and ContentDB.world_events.size() == 20, "ContentDB modes/events available")
+	_check(ContentDB.get_elite_enemies().size() == 11 and ContentDB.get_boss_enemies().size() == 6,
+		"ContentDB elite/boss rosters available")
 	_check(UIFonts.is_available(), "bundled fonts loaded")
 	_check(UIIcons.has_icon(&"crosshair"), "icon set imported")
 	_check(UIIcons.has_icon(&"skull") and UIIcons.has_icon(&"cache"), "new icon set imported")
+	for icon_name in [&"weather-snow", &"weather-ion", &"weather-void", &"weather-meteor", &"weather-toxic",
+			&"faction-ashen", &"faction-bloom", &"faction-choir",
+			&"discipline-vanguard", &"discipline-infiltrator", &"discipline-engineer", &"discipline-pathfinder"]:
+		_check(UIIcons.has_icon(icon_name), "expansion icon imported: %s" % icon_name)
 	var icon_tab_probe := UIFactory.icon_tab(&"book", "Probe")
 	var icon_tab_content := icon_tab_probe.get_node_or_null("IconContent") if icon_tab_probe != null else null
 	_check(icon_tab_content != null and icon_tab_content.get_child_count() >= 2, "icon tabs embed a glyph row")
 	if icon_tab_probe != null:
 		icon_tab_probe.free()
+
+
+## Depth-first count of the visual-first component types. Uses `is` checks so
+## script-class globals resolve regardless of find_children class matching.
+func _count_type(root: Node, kind: String) -> int:
+	if root == null:
+		return 0
+	var total := 0
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		match kind:
+			"planet":
+				if node is UIPlanetPortrait:
+					total += 1
+			"map":
+				if node is UIMapThumbnail:
+					total += 1
+			"item":
+				if node is UIItemArt:
+					total += 1
+			"medallion":
+				if node is UIIconMedallion:
+					total += 1
+			"warden":
+				if node is UIWardenPreview:
+					total += 1
+			"warden_compact":
+				if node is UIWardenPreview and (node as UIWardenPreview).compact:
+					total += 1
+			"ally":
+				if node is UIAllyPortrait:
+					total += 1
+			"pet":
+				if node is UIPetArt:
+					total += 1
+	return total
+
+
+func _first_item_art(root: Node) -> UIItemArt:
+	if root == null:
+		return null
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is UIItemArt:
+			return node as UIItemArt
+	return null
+
+
+func _label_texts(root: Node) -> Array[String]:
+	var texts: Array[String] = []
+	if root == null:
+		return texts
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		for child in node.get_children():
+			stack.append(child)
+		if node is Label:
+			texts.append((node as Label).text)
+	return texts
 
 
 func _report() -> void:
@@ -336,10 +581,11 @@ func _capture_screens() -> void:
 	await _shot("07_outpost", func() -> void: ui.show_screen(&"outpost", {"return_to": &"hub"}))
 	await _shot("08_codex", func() -> void: ui.show_screen(&"codex", {"return_to": &"hub"}))
 	await _shot("09_settings", func() -> void: ui.show_screen(&"settings", {"return_to": &"hub"}))
-	await _shot("10_loading", func() -> void:
-		ui.show_loading("Preparing the Reach", 0.62)
-		ui.update_loading(0.62, "Painting biome palettes")
-	)
+	await _shot("10_loading", func() -> void: await _show_loading_shot(&"boss", 0.62, "Painting biome palettes"))
+	await _shot("18_loading_breach", func() -> void: await _show_loading_shot(&"rift", 0.30, "Opening the Reach"))
+	await _shot("19_loading_descent", func() -> void: await _show_loading_shot(&"descent", 0.72, "Printing drop pod"))
+	await _shot("20_loading_touchdown", func() -> void: await _show_loading_shot(&"touchdown", 0.98, "Deployment live"))
+	await _shot("21_loading_leviathan", func() -> void: await _show_loading_shot(&"boss", 0.64, "Mapping hostiles", &"tidal_shelf", 20260227))
 	await _shot("11_results", func() -> void:
 		ui.show_results({
 			"extracted": true,
@@ -481,6 +727,8 @@ func _show_hub() -> void:
 
 
 func _shot(shot_name: String, setup: Callable) -> void:
+	if not _only_filter.is_empty() and not shot_name.contains(_only_filter):
+		return
 	ui.show_hub()
 	await _frames(1)
 	await setup.call()
@@ -490,3 +738,18 @@ func _shot(shot_name: String, setup: Callable) -> void:
 	var path := ProjectSettings.globalize_path("res://ui/_screenshots/%s.png" % shot_name)
 	var err := image.save_png(path)
 	print("[UI-DEMO] %s -> %s (%s)" % [shot_name, path, str(err)])
+
+
+## Show the loading cinema at a chosen act, frozen on its composed pose so the
+## screenshots are deterministic. Returns after the frame has settled.
+func _show_loading_shot(act_id: StringName, progress: float, step: String, map_id: StringName = &"cinder_caldera", seed_value: int = 20260226) -> void:
+	var brief := LoadingBrief.build(&"salvage_sweep", seed_value, 2, &"contact", &"quick", map_id)
+	ui.show_loading("Preparing the Reach", progress, brief)
+	await get_tree().process_frame
+	var loading = ui.get_loading_screen()
+	if loading != null:
+		loading.freeze_cinematic(true)
+		loading.set_act_id(act_id)
+		loading.update_loading(progress, step)
+		print("[UI-DEMO] loading act=%s boss=%s" % [String(loading.get_active_act()), String(loading.get_boss_info().get("name", ""))])
+	await get_tree().create_timer(0.15).timeout

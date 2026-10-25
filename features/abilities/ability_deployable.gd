@@ -29,6 +29,8 @@ func _ready() -> void:
 	collision_mask = 0
 	if mode == &"wall":
 		_build_wall()
+	elif mode == &"mine":
+		_build_mine()
 	else:
 		_build_turret()
 
@@ -151,6 +153,67 @@ func _physics_process(delta: float) -> void:
 		return
 	if mode == &"turret":
 		_update_turret(delta)
+	elif mode == &"mine":
+		_update_mine(delta)
+
+
+func _build_mine() -> void:
+	collision_layer = 128
+	collision_mask = 0
+	var base := MeshInstance3D.new()
+	var disc := CylinderMesh.new()
+	disc.top_radius = 0.28
+	disc.bottom_radius = 0.34
+	disc.height = 0.12
+	disc.radial_segments = 10
+	base.mesh = disc
+	var body_mat := StandardMaterial3D.new()
+	body_mat.albedo_color = Color("26383d")
+	body_mat.metallic = 0.4
+	body_mat.roughness = 0.45
+	base.material_override = body_mat
+	base.position = Vector3(0.0, 0.06, 0.0)
+	add_child(base)
+	var core := MeshInstance3D.new()
+	var core_mesh := SphereMesh.new()
+	core_mesh.radius = 0.12
+	core_mesh.height = 0.24
+	core.mesh = core_mesh
+	var core_mat := StandardMaterial3D.new()
+	core_mat.albedo_color = color
+	core_mat.emission_enabled = true
+	core_mat.emission = color
+	core_mat.emission_energy_multiplier = 3.0
+	core_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	core.material_override = core_mat
+	core.position = Vector3(0.0, 0.2, 0.0)
+	add_child(core)
+	var light := OmniLight3D.new()
+	light.light_color = color
+	light.light_energy = 0.7
+	light.omni_range = 4.0
+	light.position = Vector3(0.0, 0.4, 0.0)
+	add_child(light)
+
+
+func _update_mine(delta: float) -> void:
+	if _age < 0.5:
+		return
+	for node in get_tree().get_nodes_in_group("enemy_ai"):
+		if not node is Node3D or not is_instance_valid(node):
+			continue
+		if global_position.distance_to((node as Node3D).global_position) <= 2.8:
+			_detonate_mine()
+			return
+
+
+func _detonate_mine() -> void:
+	if not is_inside_tree():
+		return
+	CombatUtils.aoe_damage(global_position, 4.0, damage, StatKeys.TEAM_PLAYER, owner_player, StatKeys.DMG_KINETIC, get_world_3d())
+	CombatVFX.explosion(_effect_parent(), global_position, 4.0, color)
+	AudioDirector.play_3d(&"explosion", global_position, -6.0)
+	queue_free()
 
 
 func _update_turret(delta: float) -> void:

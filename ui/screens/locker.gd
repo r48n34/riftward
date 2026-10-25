@@ -41,7 +41,11 @@ func _compose() -> void:
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(body)
 
-	body.add_child(_build_preview_column())
+	var preview_scroll := UIFactory.vscroll()
+	preview_scroll.custom_minimum_size.x = 372
+	preview_scroll.size_flags_horizontal = Control.SIZE_FILL
+	preview_scroll.add_child(_build_preview_column())
+	body.add_child(preview_scroll)
 	body.add_child(_build_tiles_column())
 	_refresh()
 
@@ -54,11 +58,12 @@ func _build_preview_column() -> VBoxContainer:
 	preview_head.add_child(UIFactory.eyebrow("Warden Preview", UIPalette.mint))
 	column.add_child(preview_head)
 	var card := UIFactory.panel("Card")
-	card.custom_minimum_size = Vector2(0, 390)
+	card.custom_minimum_size = Vector2(0, 328)
 	_preview = UIWardenPreview.new()
 	_preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	card.add_child(_preview)
+	_preview.custom_minimum_size = Vector2(0, 316)
 	column.add_child(card)
 
 	var equipped := UIFactory.panel("CardInset")
@@ -124,30 +129,6 @@ func _cosmetic_icon(slot: String) -> StringName:
 	return icon_name
 
 
-func _item_slot_icon(slot: String) -> StringName:
-	if COSMETIC_ICONS.has(slot):
-		var cosmetic_icon: StringName = COSMETIC_ICONS.get(slot)
-		return cosmetic_icon
-	match slot:
-		"primary":
-			return &"target"
-		"primary_2":
-			return &"crosshair"
-		"sidearm":
-			return &"ammo"
-		"chest":
-			return &"shield"
-		"helmet":
-			return &"helmet"
-		"legs":
-			return &"legs"
-		"cloak":
-			return &"layers"
-		"charm":
-			return &"star"
-	return &"backpack"
-
-
 func _build_tabs() -> void:
 	if _tab_host == null:
 		return
@@ -176,21 +157,26 @@ func _refresh_preview_labels() -> void:
 	for slot in ["suit", "dye", "weapon_skin", "pet_shell"]:
 		var cosmetic_id := ProfileState.get_equipped_cosmetic(slot)
 		var cosmetic := ContentDB.get_cosmetic(StringName(cosmetic_id))
+		var color := cosmetic.color if cosmetic != null else UIPalette.muted
+		var accent := cosmetic.accent if cosmetic != null else UIPalette.muted_dim
 		var row := UIFactory.hbox(UIPalette.SP2)
-		var glyph := UIFactory.icon_or_null(_cosmetic_icon(slot), 13, UIPalette.muted)
-		if glyph != null:
-			glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			row.add_child(glyph)
+		row.add_child(UIFactory.medallion(_cosmetic_icon(slot), 26, color, 0.5))
 		var name_label := UIFactory.label(cosmetic.display_name if cosmetic != null else "Default", "BodySmall")
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name_label)
-		var color := cosmetic.color if cosmetic != null else UIPalette.muted
-		var swatch := ColorRect.new()
-		swatch.color = color
-		swatch.custom_minimum_size = Vector2(14, 14)
-		swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(swatch)
+		var color_chip := ColorRect.new()
+		color_chip.color = color
+		color_chip.custom_minimum_size = Vector2(18, 18)
+		color_chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		color_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		color_chip.tooltip_text = "Cosmetic colour"
+		row.add_child(color_chip)
+		var accent_chip := ColorRect.new()
+		accent_chip.color = accent
+		accent_chip.custom_minimum_size = Vector2(5, 18)
+		accent_chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		accent_chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(accent_chip)
 		row.tooltip_text = slot.replace("_", " ").capitalize()
 		_equipped_box.add_child(row)
 
@@ -239,43 +225,166 @@ func _build_cosmetic_tile(cosmetic: CosmeticData, group: ButtonGroup, equipped_i
 	var tile := UIFactory.card_button(true)
 	tile.button_group = group
 	tile.button_pressed = is_equipped
-	tile.custom_minimum_size = Vector2(0, 124)
+	tile.custom_minimum_size = Vector2(0, 190)
 	tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	tile.disabled = not unlocked
 	var unlock_text := cosmetic.unlock_text if not cosmetic.unlock_text.is_empty() else "%s cosmetic" % String(cosmetic.slot).replace("_", " ")
-	tile.tooltip_text = unlock_text if unlocked else unlock_text + " · locked"
+	tile.tooltip_text = _cosmetic_tooltip(cosmetic, unlocked, is_equipped, unlock_text)
 	tile.pressed.connect(func() -> void: _equip_cosmetic(String(cosmetic.slot), String(cosmetic.id)))
 	var content := UIFactory.card_content(tile)
 	if content == null:
 		return tile
-	var box := UIFactory.vbox(UIPalette.SP2)
-
-	var swatch_row := UIFactory.hbox(UIPalette.SP2)
-	var main_swatch := ColorRect.new()
-	main_swatch.color = cosmetic.color
-	main_swatch.custom_minimum_size = Vector2(0, 46)
-	main_swatch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	main_swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	swatch_row.add_child(main_swatch)
-	var accent_swatch := ColorRect.new()
-	accent_swatch.color = cosmetic.accent
-	accent_swatch.custom_minimum_size = Vector2(18, 46)
-	accent_swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	swatch_row.add_child(accent_swatch)
-	box.add_child(swatch_row)
+	_set_content_margins(content, 10, 8, 10, 10)
+	var box := UIFactory.vbox(6)
+	box.add_child(_cosmetic_preview(cosmetic, is_equipped))
 
 	var name_row := UIFactory.hbox(UIPalette.SP2)
-	var name_label := UIFactory.label(cosmetic.display_name, "TitleLabel")
+	var name_label := UIFactory.label(cosmetic.display_name, "TitleLabel", UIPalette.ivory if unlocked else UIPalette.muted_dim)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	name_row.add_child(name_label)
 	if is_equipped:
-		name_row.add_child(UIFactory.icon(&"check", 14, UIPalette.mint))
+		var equipped_badge := UIFactory.badge("", UIPalette.mint, &"check")
+		equipped_badge.tooltip_text = "Equipped"
+		name_row.add_child(equipped_badge)
 	elif not unlocked:
-		name_row.add_child(UIFactory.icon(&"lock", 14, UIPalette.muted_dim))
+		var lock_badge := UIFactory.badge("", UIPalette.muted_dim, &"lock")
+		lock_badge.tooltip_text = "Locked"
+		name_row.add_child(lock_badge)
 	box.add_child(name_row)
 	content.add_child(box)
 	UIFactory.passive_tree(content)
 	return tile
+
+
+func _cosmetic_preview(cosmetic: CosmeticData, is_equipped: bool) -> Control:
+	var slot := String(cosmetic.slot)
+	match slot:
+		"suit", "dye":
+			var preview := UIWardenPreview.new()
+			preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
+			if slot == "suit":
+				preview.configure_preview(
+					true,
+					cosmetic.color,
+					cosmetic.accent,
+					Color.TRANSPARENT,
+					Color.TRANSPARENT,
+					Color.TRANSPARENT,
+					Color.TRANSPARENT,
+					Color.TRANSPARENT
+				)
+			else:
+				preview.configure_preview(
+					true,
+					Color.TRANSPARENT,
+					cosmetic.accent,
+					cosmetic.color,
+					Color.TRANSPARENT,
+					Color.TRANSPARENT,
+					Color.TRANSPARENT,
+					Color.TRANSPARENT
+				)
+			_prepare_preview(preview, Vector2(0, 132))
+			return preview
+		"weapon_skin":
+			var weapon := _preview_weapon()
+			var art := UIItemArt.new()
+			art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			art.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			art.size_flags_vertical = Control.SIZE_EXPAND_FILL
+			art.configure(
+				"weapon",
+				_weapon_slot_id(weapon),
+				String(weapon.id) if weapon != null else "",
+				cosmetic.color,
+				cosmetic.accent,
+				true
+			)
+			_prepare_preview(art, Vector2(0, 132))
+			return _preview_frame(art, cosmetic.color, is_equipped)
+		"pet_shell":
+			var pet_art := UIPetArt.new()
+			pet_art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			pet_art.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			pet_art.size_flags_vertical = Control.SIZE_EXPAND_FILL
+			pet_art.configure(_preview_pet_id(), 112, cosmetic.color, cosmetic.accent)
+			_prepare_preview(pet_art, Vector2(0, 132))
+			return _preview_frame(pet_art, cosmetic.color, is_equipped)
+	return UIFactory.medallion(_cosmetic_icon(slot), 96, cosmetic.color, 0.5)
+
+
+func _preview_frame(art: Control, accent: Color, selected: bool) -> PanelContainer:
+	var frame := UIFactory.art_frame(art, accent, selected)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	frame.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	return frame
+
+
+func _prepare_preview(control: Control, min_size: Vector2) -> void:
+	control.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if control.is_inside_tree():
+		_apply_preview_size(control, min_size)
+	else:
+		control.ready.connect(_apply_preview_size.bind(control, min_size), CONNECT_ONE_SHOT)
+
+
+func _apply_preview_size(control: Control, min_size: Vector2) -> void:
+	if not is_instance_valid(control):
+		return
+	control.custom_minimum_size = min_size
+	if control is UIWardenPreview:
+		control.set_process(false)
+		control.refresh()
+
+
+func _preview_weapon() -> WeaponData:
+	var info := ItemFactory.describe(ProfileState.get_equipped_item(&"primary"))
+	var equipped: WeaponData = info.get("weapon", null) as WeaponData
+	if equipped != null:
+		return equipped
+	for weapon in ContentDB.weapons.values():
+		return weapon as WeaponData
+	return null
+
+
+func _weapon_slot_id(weapon: WeaponData) -> String:
+	if weapon == null:
+		return "primary"
+	return "primary" if String(weapon.slot) == "primary_2" else String(weapon.slot)
+
+
+func _preview_pet_id() -> StringName:
+	var active := ProfileState.get_active_pet()
+	if ContentDB.get_pet(active) != null:
+		return active
+	for pet in ContentDB.pets.values():
+		return pet.id
+	return &""
+
+
+func _cosmetic_tooltip(cosmetic: CosmeticData, unlocked: bool, is_equipped: bool, unlock_text: String) -> String:
+	var lines: PackedStringArray = [cosmetic.display_name]
+	if not cosmetic.description.is_empty():
+		lines.append(cosmetic.description)
+	lines.append(unlock_text)
+	if is_equipped:
+		lines.append("Equipped")
+	elif not unlocked:
+		lines.append("Locked")
+	else:
+		lines.append("Click to equip")
+	return "\n".join(lines)
+
+
+func _set_content_margins(content: MarginContainer, left: int, top: int, right: int, bottom: int) -> void:
+	content.add_theme_constant_override("margin_left", left)
+	content.add_theme_constant_override("margin_top", top)
+	content.add_theme_constant_override("margin_right", right)
+	content.add_theme_constant_override("margin_bottom", bottom)
 
 
 func _build_salvage_bench() -> void:
@@ -309,12 +418,15 @@ func _build_salvage_row(item: Dictionary, equipped: bool) -> PanelContainer:
 	var info := ItemFactory.describe(item)
 	var rarity: Color = info.get("rarity_color", UIPalette.muted)
 	var row_panel := UIFactory.panel("RowPanel")
-	row_panel.tooltip_text = String(info.get("rarity_name", "Common"))
+	row_panel.tooltip_text = _salvage_tooltip(info)
 	var row := UIFactory.hbox(UIPalette.SP3)
-	var glyph := UIFactory.icon_or_null(_item_slot_icon(String(info.get("slot", ""))), 13, rarity)
-	if glyph != null:
-		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(glyph)
+	var rarity_bar := ColorRect.new()
+	rarity_bar.color = rarity
+	rarity_bar.custom_minimum_size = Vector2(3, 0)
+	rarity_bar.size_flags_vertical = Control.SIZE_FILL
+	rarity_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(rarity_bar)
+	row.add_child(_salvage_art(info, rarity))
 	row.add_child(UIFactory.label("%s" % info.get("display_name", "Unknown"), "TitleLabel", rarity))
 	var level_row := UIFactory.icon_value(&"arrow-up", "L%d" % int(info.get("level", 1)), UIPalette.muted, 11)
 	level_row.tooltip_text = "Item level"
@@ -338,6 +450,51 @@ func _build_salvage_row(item: Dictionary, equipped: bool) -> PanelContainer:
 		row.add_child(scrap)
 	row_panel.add_child(row)
 	return row_panel
+
+
+func _salvage_art(info: Dictionary, rarity: Color) -> PanelContainer:
+	var art := UIItemArt.new()
+	art.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	art.configure(
+		String(info.get("kind", "gear")),
+		_item_slot_id(String(info.get("slot", ""))),
+		String(info.get("base_id", "")),
+		rarity,
+		_item_art_accent(info),
+		true
+	)
+	art.custom_minimum_size = Vector2(32, 28)
+	var frame := UIFactory.art_frame(art, rarity, false)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return frame
+
+
+func _item_slot_id(slot: String) -> String:
+	return "primary" if slot == "primary_2" else slot
+
+
+func _item_art_accent(info: Dictionary) -> Color:
+	var weapon: WeaponData = info.get("weapon", null) as WeaponData
+	if weapon != null:
+		return weapon.accent
+	var rarity: Color = info.get("rarity_color", UIPalette.muted_dim)
+	return UIPalette.mix(rarity, UIPalette.ivory, 0.3)
+
+
+func _salvage_tooltip(info: Dictionary) -> String:
+	var lines: PackedStringArray = [
+		"%s · %s · Level %d" % [
+			String(info.get("rarity_name", "Common")),
+			String(info.get("slot", "")).capitalize(),
+			int(info.get("level", 1)),
+		],
+	]
+	var description := String(info.get("description", ""))
+	if not description.is_empty():
+		lines.append(description)
+	return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -375,11 +532,9 @@ func _layout() -> void:
 
 
 func _grid_columns() -> int:
-	var available := viewport_width() - UIPalette.rail_width(viewport_width()) - 372.0 - page_padding() * 2.0 - UIPalette.SP5
-	if available >= 900.0:
+	var available := viewport_width() - UIPalette.rail_width(viewport_width()) - 384.0 - page_padding() * 2.0 - UIPalette.SP5
+	if available >= 780.0:
 		return 4
-	if available >= 640.0:
+	if available >= 560.0:
 		return 3
-	if available >= 430.0:
-		return 2
-	return 1
+	return 2

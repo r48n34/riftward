@@ -62,6 +62,23 @@ static func ability_icon(icon_name: StringName) -> StringName:
 		&"wall": &"shield",
 		&"crate": &"backpack",
 		&"skull": &"warning",
+		&"ember": &"ember",
+		&"wave": &"wave",
+		&"smoke": &"smoke",
+		&"drone": &"drone",
+		&"mine": &"mine",
+		&"grapple": &"grapple",
+		&"water": &"water",
+		&"lava": &"lava",
+		&"dungeon": &"dungeon",
+		&"planet": &"planet",
+		&"training": &"training",
+		&"moon": &"moon",
+		&"weather-sun": &"weather-sun",
+		&"weather-rain": &"weather-rain",
+		&"weather-storm": &"weather-storm",
+		&"weather-fog": &"weather-fog",
+		&"weather-ash": &"weather-ash",
 	}
 	var resolved: StringName = mapping.get(icon_name, &"bolt")
 	if not has_icon(resolved):

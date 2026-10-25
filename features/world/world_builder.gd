@@ -35,6 +35,9 @@ const MaterialsScript := preload("res://features/world/world_materials.gd")
 const StructuresScript := preload("res://features/world/world_structures.gd")
 const ScatterScript := preload("res://features/world/world_scatter.gd")
 const EnvironmentScript := preload("res://features/world/world_environment.gd")
+const FluidScript := preload("res://features/world/world_fluid.gd")
+const DayNightScript := preload("res://features/world/day_night_cycle.gd")
+const WeatherScript := preload("res://features/world/weather_system.gd")
 
 ## World size in meters (square, centered on origin).
 @export var map_size := 1800.0
@@ -96,12 +99,25 @@ var _terrain_root: Node3D
 var _structures_root: Node3D
 var _scatter_root: Node3D
 var _environment_root: Node3D
+var _fluid_root: Node3D
 var _nav_region: NavigationRegion3D
 var _env_data: Dictionary = {}
 var _owned_roots: Array[Node] = []
 var _stats: Dictionary = {}
 var _path_rng := RandomNumberGenerator.new()
 var _roadside_points: Array[Dictionary] = []
+
+# --- Planet / fluid / environment state --------------------------------------
+var _planet: Dictionary = {}
+var _planet_palette: Dictionary = {}
+var _fluid_cfg: Dictionary = {}
+var _weather_defs: Array = []
+var _fluid_basins: Array[Dictionary] = []
+var _fluid_mask := PackedFloat32Array()
+var _environment_director: Node = null
+var _day_night: Node = null
+var _weather: Node = null
+var _start_time := 0.62
 
 # --- Map preset state (populated by apply_preset; empty = default frontier) --
 var _preset: Dictionary = {}
@@ -123,6 +139,7 @@ const POI_LAYOUT := [
 	{"type": "bloom_hive", "biome": 2, "r_min": 280.0, "r_max": 660.0, "name": "Bloom Hive", "radius": 42.0, "pad": 22.0},
 	{"type": "choir_post", "biome": 1, "r_min": 300.0, "r_max": 700.0, "name": "Choir Listening Post", "radius": 36.0, "pad": 18.0},
 	{"type": "colony_ruins", "biome": 0, "r_min": 230.0, "r_max": 620.0, "name": "Colony Ruins", "radius": 40.0, "pad": 20.0},
+	{"type": "derelict_ship", "biome": 2, "r_min": 260.0, "r_max": 640.0, "name": "Derelict Freighter", "radius": 46.0, "pad": 26.0},
 ]
 
 ## Extra-POI kits cycled through when a map preset requests more objectives.
@@ -132,8 +149,9 @@ const EXTRA_POI_KINDS := [
 	{"type": "faction_camp", "radius": 42.0, "pad": 22.0},
 	{"type": "relay_spire", "radius": 30.0, "pad": 16.0},
 	{"type": "ruin_field", "radius": 32.0, "pad": 18.0},
+	{"type": "derelict_ship", "radius": 46.0, "pad": 26.0},
 ]
-const EXTRA_POI_FALLBACK_NAMES := ["Forward Camp", "Signal Relay", "Outer Ruins"]
+const EXTRA_POI_FALLBACK_NAMES := ["Forward Camp", "Signal Relay", "Outer Ruins", "Wreck Site"]
 ## Base POIs keep their authored 235 m spacing; preset extras accept 195 m so
 ## they can still find room on an already populated frontier.
 const DEFAULT_POI_SPACING := 235.0
@@ -160,6 +178,27 @@ func apply_preset(preset: Dictionary) -> void:
 	_roadside_target = maxi(0, int(_preset.get("roadside_target", DEFAULT_ROADSIDE_TARGET)))
 	_biome_rotation = float(_preset.get("biome_rotation", 0.0))
 	_extra_poi_layout = _build_extra_poi_layout(_preset)
+	var planet_value = _preset.get("planet", {})
+	_planet = planet_value.duplicate(true) if planet_value is Dictionary else {}
+	_planet_palette = _build_planet_palette(_planet)
+	var fluid_value = _preset.get("fluid", {})
+	_fluid_cfg = fluid_value.duplicate(true) if fluid_value is Dictionary else {}
+	var weather_value = _preset.get("weather_defs", [])
+	_weather_defs = weather_value.duplicate(true) if weather_value is Array else []
+	_start_time = clampf(float(_preset.get("start_time", 0.62)), 0.0, 0.999)
+
+
+func _build_planet_palette(planet: Dictionary) -> Dictionary:
+	if planet.is_empty():
+		return {}
+	var tint: Array = planet.get("terrain_tint", [])
+	if tint.size() < 3:
+		return {}
+	return {"tint": tint, "strength": float(planet.get("tint_strength", 0.0))}
+
+
+func _ready() -> void:
+	add_to_group("world")
 
 
 func generate(world_seed: int) -> void:
@@ -221,6 +260,8 @@ func generate(world_seed: int) -> void:
 	_emit_progress(0.33, "Surveying points of interest")
 	_place_pois()
 	_build_path_network()
+	_emit_progress(0.35, "Flooding the lowlands")
+	_place_fluid_basins()
 
 	# --- Phase B: pads, roads, map overlay (worker thread, data only) --------
 	var pads: Array = []
@@ -251,6 +292,8 @@ func generate(world_seed: int) -> void:
 		"pads": pads,
 		"links": _path_links,
 		"markers": markers,
+		"basins": _fluid_basins,
+		"planet_palette": _planet_palette,
 		"path_width": 8.0,
 		"map_tex_res": map_texture_resolution,
 	}
@@ -270,6 +313,9 @@ func generate(world_seed: int) -> void:
 	# --- Terrain meshes + collision (data on workers, nodes on main) ---------
 	_emit_progress(0.48, "Raising terrain")
 	await _build_terrain()
+	_emit_progress(0.60, "Filling water and lava")
+	await get_tree().process_frame
+	_build_fluid()
 
 	# --- POIs ---------------------------------------------------------------
 	_emit_progress(0.64, "Assembling frontier structures")
@@ -277,6 +323,7 @@ func generate(world_seed: int) -> void:
 	_structures_root = _make_root("Structures")
 	var structures = StructuresScript.new()
 	_stats["structures"] = structures.build_all(_structures_root, _pois, _spawn_info, world_seed, _mats, _roadside_points)
+	_collect_poi_structures()
 
 	# --- Scatter ------------------------------------------------------------
 	_emit_progress(0.74, "Scattering alien growth")
@@ -292,7 +339,8 @@ func generate(world_seed: int) -> void:
 		_environment_root = _make_root("Environment")
 		var env_builder = EnvironmentScript.new()
 		var env_overrides: Dictionary = _preset.get("environment", {})
-		_env_data = env_builder.setup(_environment_root, env_overrides)
+		_env_data = env_builder.setup(_environment_root, env_overrides, _planet)
+		_setup_environment_systems()
 	_build_bounds()
 
 	# --- Navigation ---------------------------------------------------------
@@ -334,7 +382,89 @@ func get_pois() -> Array[Dictionary]:
 			"type": String(poi.get("type", "poi")),
 			"name": String(poi.get("name", "POI")),
 			"radius": float(poi.get("radius", 30.0)),
+			"interior": poi.get("interior", {}),
+			"dungeon_anchor": poi.get("dungeon_anchor", null),
 		})
+	return out
+
+
+func get_biome_names() -> Array[String]:
+	var out: Array[String] = []
+	for i in 3:
+		out.append(Palette.biome_name_for(_planet, i))
+	return out
+
+
+func get_planet() -> Dictionary:
+	return _planet.duplicate(true)
+
+
+func get_planet_palette() -> Dictionary:
+	return _planet_palette.duplicate(true)
+
+
+func get_fluid_basins() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for basin in _fluid_basins:
+		out.append(basin.duplicate(true))
+	return out
+
+
+func get_fluid_root() -> Node3D:
+	return _fluid_root
+
+
+## Analytic fluid query: {type: 0 none / 1 water / 2 lava, level, depth, center,
+## radius}. Gameplay uses this instead of physics volumes.
+func sample_fluid(world_xz: Vector2) -> Dictionary:
+	var out := {"type": 0, "level": 0.0, "depth": 0.0, "center": Vector2.ZERO, "radius": 0.0}
+	if _fluid_basins.is_empty() or _heights.is_empty():
+		return out
+	var best_depth := 0.0
+	for basin in _fluid_basins:
+		var center: Vector2 = basin["center"]
+		var radius := float(basin["radius"])
+		if world_xz.distance_to(center) > radius:
+			continue
+		var level := float(basin["level"])
+		var ground := sample_height(world_xz)
+		if ground >= level:
+			continue
+		var depth := level - ground
+		if depth > best_depth:
+			best_depth = depth
+			out = {
+				"type": int(basin["type"]),
+				"level": level,
+				"depth": depth,
+				"center": center,
+				"radius": radius,
+			}
+	return out
+
+
+func is_submerged(world_position: Vector3) -> bool:
+	var fluid := sample_fluid(Vector2(world_position.x, world_position.z))
+	return int(fluid.get("type", 0)) != 0 and world_position.y < float(fluid.get("level", 0.0))
+
+
+func get_environment_director() -> Node:
+	return _environment_director
+
+
+func get_day_night_cycle() -> Node:
+	return _day_night
+
+
+func get_weather_system() -> Node:
+	return _weather
+
+
+func get_interior_pois() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for poi in _pois:
+		if poi.has("interior") and not (poi["interior"] as Dictionary).is_empty():
+			out.append(poi.duplicate(true))
 	return out
 
 
@@ -378,7 +508,7 @@ func get_biome_weights_at(world_xz: Vector2) -> Vector3:
 
 
 func get_biome_at(world_xz: Vector2) -> String:
-	return Palette.biome_name(Palette.dominant_biome(get_biome_weights_at(world_xz)))
+	return Palette.biome_name_for(_planet, Palette.dominant_biome(get_biome_weights_at(world_xz)))
 
 
 func get_path_segments() -> Array:
@@ -498,7 +628,13 @@ func _clear_world() -> void:
 	_structures_root = null
 	_scatter_root = null
 	_environment_root = null
+	_fluid_root = null
+	_environment_director = null
+	_day_night = null
+	_weather = null
 	_env_data = {}
+	_fluid_basins.clear()
+	_fluid_mask = PackedFloat32Array()
 	_base_heights = PackedFloat32Array()
 	_heights = PackedFloat32Array()
 	_path_mask = PackedFloat32Array()
@@ -541,6 +677,7 @@ func _apply_final_fields(result: Dictionary) -> void:
 	_heights = result["heights"]
 	_path_mask = result["path_mask"]
 	_pad_mask = result["pad_mask"]
+	_fluid_mask = result.get("fluid_mask", PackedFloat32Array())
 	_map_image = result["map_image"]
 	if _map_image != null:
 		_map_texture = ImageTexture.create_from_image(_map_image)
@@ -820,6 +957,154 @@ func _build_path_network() -> void:
 	_path_segments = _path_links
 
 
+## Places seeded water/lava basins in low, quiet ground away from POIs, roads
+## and drop zones. The height worker carves the bowls; the fluid renderer draws
+## the surfaces; gameplay samples them analytically.
+func _place_fluid_basins() -> void:
+	_fluid_basins.clear()
+	if _fluid_cfg.is_empty():
+		return
+	var water_range: Array = _fluid_cfg.get("water_basins", [0, 0])
+	var lava_range: Array = _fluid_cfg.get("lava_basins", [0, 0])
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _world_seed * 4099 + 71
+	var water_count := _range_count(rng, water_range)
+	var lava_count := _range_count(rng, lava_range)
+	var total := water_count + lava_count
+	if total <= 0:
+		return
+	var half := map_size * 0.5
+	for attempt in 520:
+		if _fluid_basins.size() >= total:
+			break
+		var fluid_type := 1 if _fluid_basins.size() < water_count else 2
+		var ang := rng.randf() * TAU
+		var dist := rng.randf_range(190.0, half * 0.76)
+		var center := Vector2(cos(ang) * dist, sin(ang) * dist)
+		var radius := rng.randf_range(46.0, 78.0)
+		var falloff := rng.randf_range(22.0, 40.0)
+		if not _basin_clear(center, radius + falloff):
+			continue
+		var h0 := _sample_base_height(center)
+		var depth := rng.randf_range(6.0, 13.0)
+		var level := h0 - rng.randf_range(0.4, 1.6)
+		_fluid_basins.append({
+			"center": center,
+			"radius": radius,
+			"falloff": falloff,
+			"level": level,
+			"depth": depth,
+			"type": fluid_type,
+		})
+	if _fluid_basins.is_empty():
+		var fallback := Vector2(0.0, -half * 0.52)
+		_fluid_basins.append({
+			"center": fallback, "radius": 62.0, "falloff": 30.0,
+			"level": _sample_base_height(fallback) - 0.8, "depth": 9.0,
+			"type": 1 if water_count > 0 else 2,
+		})
+	_stats["fluid_basins"] = _fluid_basins.size()
+
+
+func _range_count(rng: RandomNumberGenerator, range_value: Array) -> int:
+	if range_value.size() < 2:
+		return 0
+	return rng.randi_range(maxi(0, int(range_value[0])), maxi(0, int(range_value[1])))
+
+
+func _basin_clear(center: Vector2, radius: float) -> bool:
+	var limit := _half * 0.86
+	if absf(center.x) > limit or absf(center.y) > limit:
+		return false
+	for poi in _pois:
+		var pp := Vector2(poi["position"].x, poi["position"].z)
+		if center.distance_to(pp) < float(poi["radius"]) + radius + 26.0:
+			return false
+	for spawn in _spawn_info:
+		if center.distance_to(spawn["pos2"]) < radius + 70.0:
+			return false
+	for roadside in _roadside_points:
+		var rp: Vector3 = roadside["position"]
+		if center.distance_to(Vector2(rp.x, rp.z)) < radius + 34.0:
+			return false
+	for existing in _fluid_basins:
+		var ec: Vector2 = existing["center"]
+		if center.distance_to(ec) < radius + float(existing["radius"]) + 40.0:
+			return false
+	if _path_distance(center) < radius * 0.75 + 24.0:
+		return false
+	return true
+
+
+func _path_distance(pos: Vector2) -> float:
+	var best := 1.0e20
+	for link in _path_links:
+		if not (link is PackedVector2Array):
+			continue
+		var pts: PackedVector2Array = link
+		for i in range(1, pts.size()):
+			var a := pts[i - 1]
+			var b := pts[i]
+			var ab := b - a
+			var t := clampf((pos - a).dot(ab) / maxf(ab.length_squared(), 0.0001), 0.0, 1.0)
+			best = minf(best, pos.distance_to(a + ab * t))
+	return best
+
+
+func _build_fluid() -> void:
+	if _fluid_basins.is_empty():
+		return
+	_fluid_root = _make_root("Fluid")
+	var fluid = FluidScript.new()
+	_stats["fluid"] = fluid.build(_fluid_root, _fluid_basins, _fluid_mask, _heights, _grid_res, map_size)
+
+
+func _setup_environment_systems() -> void:
+	_environment_director = _env_data.get("director")
+	if _environment_director == null:
+		return
+	_day_night = DayNightScript.new()
+	_day_night.name = "DayNightCycle"
+	_environment_root.add_child(_day_night)
+	if _day_night.has_method("setup"):
+		_day_night.call("setup", _environment_director, _planet, _start_time)
+	var pool: Array = _preset.get("weather_pool", [])
+	if pool.is_empty():
+		pool = _planet.get("weather_pool", [])
+	_weather = WeatherScript.new()
+	_weather.name = "WeatherSystem"
+	_environment_root.add_child(_weather)
+	if _weather.has_method("setup"):
+		_weather.call("setup", _environment_director, _weather_defs, pool, _world_seed)
+
+
+func _collect_poi_structures() -> void:
+	if _structures_root == null:
+		return
+	var interiors := 0
+	for i in _pois.size():
+		var prefix := "POI_%02d_" % i
+		var root: Node3D = null
+		for child in _structures_root.get_children():
+			if child is Node3D and String(child.name).begins_with(prefix):
+				root = child as Node3D
+				break
+		if root == null:
+			continue
+		var spawn_markers := root.find_children("InteriorSpawn_*", "Marker3D", true, false)
+		if not spawn_markers.is_empty():
+			var points: Array[Vector3] = []
+			for marker in spawn_markers:
+				if marker is Node3D:
+					points.append((marker as Node3D).global_position)
+			_pois[i]["interior"] = {"spawns": points, "count": points.size()}
+			interiors += 1
+		var anchor := root.find_child("DungeonAnchor", true, false)
+		if anchor is Node3D:
+			_pois[i]["dungeon_anchor"] = (anchor as Node3D).global_position
+	_stats["interiors"] = interiors
+
+
 ## Places a handful of small roadside buildings so the road network reads as
 ## inhabited rather than empty. Points are validated against POIs, spawns and
 ## each other, then handed to WorldStructures during node construction.
@@ -884,6 +1169,10 @@ func _roadside_clear(pos: Vector2) -> bool:
 		var ep: Vector3 = existing["position"]
 		if pos.distance_to(Vector2(ep.x, ep.z)) < 80.0:
 			return false
+	for basin in _fluid_basins:
+		var bc: Vector2 = basin["center"]
+		if pos.distance_to(bc) < float(basin["radius"]) + 26.0:
+			return false
 	return true
 
 
@@ -929,6 +1218,7 @@ func _build_terrain() -> void:
 		"macro": _macro,
 		"path_mask": _path_mask,
 		"pad_mask": _pad_mask,
+		"planet_palette": _planet_palette,
 	}
 	# Pure-data chunk vertex generation on worker threads; nodes on main thread.
 	var thread_count := clampi(OS.get_processor_count() - 1, 2, 8)

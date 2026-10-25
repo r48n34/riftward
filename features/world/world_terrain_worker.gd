@@ -41,6 +41,7 @@ func compute_chunk(p: Dictionary, holder: Dictionary) -> void:
 	var macro: PackedFloat32Array = p["macro"]
 	var path_mask: PackedFloat32Array = p["path_mask"]
 	var pad_mask: PackedFloat32Array = p["pad_mask"]
+	var planet_palette: Dictionary = p.get("planet_palette", {})
 
 	var pts := grid_res + 1
 	var cell := map_size / float(grid_res)
@@ -86,7 +87,7 @@ func compute_chunk(p: Dictionary, holder: Dictionary) -> void:
 			var da := GenWorker.sample_scalar_grid(detail_a, biome_res, map_size, x, z)
 			var db := GenWorker.sample_scalar_grid(detail_b, biome_res, map_size, x, z)
 			var mc := GenWorker.sample_scalar_grid(macro, biome_res, map_size, x, z)
-			var col := Palette.blend_terrain_color(weights, h, slope, da, db, mc)
+			var col := Palette.blend_terrain_color(weights, h, slope, da, db, mc, planet_palette)
 
 			# Cheap cavity darkening for rock folds and canyon floors.
 			var avg := (hl + hr + hd + hu) * 0.25

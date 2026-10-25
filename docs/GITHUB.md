@@ -9,54 +9,51 @@ order, and what to replace with your own account name.
 
 | File | Purpose |
 |---|---|
-| [LICENSE](LICENSE) | GNU GPL v3.0, verbatim upstream text (674 lines) |
-| [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) | Godot (MIT) + the three OFL fonts, so the license story is complete |
-| [.gitignore](.gitignore) | Excludes `build/`, `release/`, `.build/`, `.godot/` and logs |
-| [.gitattributes](.gitattributes) | Normalizes line endings to LF, so Windows/Linux CI agree |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Architecture conventions, test gate, PR process |
-| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Short, enforceable, no committee theatre |
-| [SECURITY.md](SECURITY.md) | What is actually in scope for an offline game |
-| [.github/workflows/tests.yml](.github/workflows/tests.yml) | Runs all ten headless suites on every push and PR |
-| [.github/workflows/export-windows.yml](.github/workflows/export-windows.yml) | Builds the Windows zip on release tags |
-| Issue forms and PR template | Structured bug reports, feature requests, review checklist |
+| [LICENSE](../LICENSE) | GNU GPL v3.0, verbatim upstream text (674 lines) |
+| [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | Godot (MIT) + the three OFL fonts, so the license story is complete |
+| [.gitignore](../.gitignore) | Excludes `build/`, `release/`, `.build/`, `.godot/` and logs |
+| [.gitattributes](../.gitattributes) | Normalizes line endings to LF, so Windows and Linux checkouts agree |
+| [CONTRIBUTING.md](../CONTRIBUTING.md) | Architecture conventions, test gate, PR process |
+| [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Short, enforceable, no committee theatre |
+| [SECURITY.md](../SECURITY.md) | What is actually in scope for an offline game |
+| [.github/ISSUE_TEMPLATE/](../.github/ISSUE_TEMPLATE/) and [.github/PULL_REQUEST_TEMPLATE.md](../.github/PULL_REQUEST_TEMPLATE.md) | Structured bug reports, feature requests and a review checklist |
 
-All badges, issue-template links and the README header already point at **github.com/r48n34/riftward**
-and **r48n34.itch.io/riftward**, so there is nothing left to rename.
+There are **no GitHub Actions workflows in this repository**. The ones from the early layout were
+removed on purpose, so nothing runs on push or on a tag; the local suite runner is the test gate.
+
+The README header, the license badge and the issue-template links already point at
+**github.com/r48n34/riftward** and **r48n34.itch.io/riftward**, so there is nothing left to rename.
 
 ---
 
 ## 1. The repository
 
-Already created and empty at <https://github.com/r48n34/riftward>, and this folder already has it as
-`origin`. If you ever recreate it, keep it **empty** — no README, no .gitignore, no license — because
-those files already exist here, and an initialized remote forces a merge on the first push.
+Already created at <https://github.com/r48n34/riftward>, and this folder already has it as `origin`
+with branch `main` pushed. If you ever recreate it, keep it **empty** — no README, no .gitignore, no
+license — because those files already exist here, and an initialized remote forces a merge on the next
+push.
 
 ---
 
-## 2. First commit and push
+## 2. Commit and push the 0.2.0 release
 
-The local repository is ready: branch `main`, one commit, `origin` already configured. Push it:
+The initial source drop is already on `origin/main`, with branch `main` and the remote configured. The
+0.2.0 work is sitting in the working tree — commit it and push:
 
 ```powershell
 cd D:\godotGa\game
-git push -u origin main
-```
-
-If `git log` ever reports that the branch has no commits while the files are still present, re-create
-the commit — safe, because nothing has been pushed yet:
-
-```powershell
 git add -A
-git commit -m "RIFTWARD 0.1.0 - initial source release"
+git commit -m "RIFTWARD 0.2.0 - second source release"
+git push
 ```
 
-That exact state occurred once here: `origin` was configured and a fetch had run, but the local commit
-and index were gone. Re-committing restored it in one step; the working tree was never at risk.
+If `git log` ever reports that the branch has no commits while the files are still present, re-create the
+commit with the same message — safe, because nothing newer has been pushed yet.
 
 **Check before pushing** — these must all be true:
 
 ```powershell
-git ls-files | Measure-Object -Line          # 477 tracked files, not tens of thousands
+git ls-files | Measure-Object -Line          # a few hundred tracked files, not tens of thousands
 git ls-files | Select-String -Pattern '^(build|release|\.build|\.godot)/'   # must print nothing
 git ls-files | Select-String -Pattern '\.(exe|pck|tpz)$'                    # must print nothing
 ```
@@ -93,8 +90,9 @@ git commit --amend --reset-author --no-edit
 ```
 
 What this repository currently passes: no credentials, no `C:\Users\...` paths, no save files or logs,
-no `.env`/keystore/private-key files, largest tracked file 1.24 MB, and exactly five ignored entries
-(`.build/`, `.godot/`, `build/`, `release/`, `tests/artifacts/logs/`).
+no `.env`/keystore/private-key files, largest tracked file 1.24 MB, and the ignore rules in
+[.gitignore](../.gitignore) (`.build/`, `.godot/`, `build/`, `release/`, `.agent-teams/`, test artifacts
+and local scratch) keep generated content out of the tree.
 
 ---
 
@@ -112,22 +110,15 @@ Topics are how people find Godot projects on GitHub; the first three do most of 
 
 ---
 
-## 4. Verify the license and the first CI run
+## 4. Verify the license and run the tests
 
 - The repo sidebar should show **GPL-3.0 license**. If it shows "Unknown", the license file was not
   pushed or was renamed — it must be `LICENSE` at the root.
-- Open the **Actions** tab. `headless-tests` starts on the first push. It downloads Godot 4.7.2, imports
-  the project and runs all ten suites.
+- No CI runs on push, so the gate is local: run `tests/run_all.ps1` and confirm it prints
+  `All 14 test suites passed.` before you tag. It imports the project and runs all fourteen suites; a
+  failure names its check in `tests/artifacts/logs/`.
 
-The workflow was written against the same commands that pass locally (`tests/run_all.ps1`), but it has
-**not been executed on GitHub's runners yet**. Watch the first run; the most likely snags:
-
-| Symptom | Cause | Fix |
-|---|---|---|
-| `godot: command not found` | cache restored without binary | clear the Actions cache, re-run |
-| Import step slow or noisy | first import writes `.godot/` | it is ignored and disposable; `--import` is idempotent |
-| UI suite fails only on CI | font rendering in headless | confirm your local run also uses `--headless` |
-| Total time > 30 min | cold cache + ten suites | raise `timeout-minutes`, or split jobs |
+The commands are the same ones the QA report lists, so a green local run is the release evidence.
 
 ---
 
@@ -136,31 +127,33 @@ The workflow was written against the same commands that pass locally (`tests/run
 Settings → Branches → **Add branch protection rule** for `main`:
 
 - Require a pull request before merging.
-- Require status checks to pass: `Headless suites (Linux)`.
 - Disallow force pushes.
+
+Status checks can only be required after a CI workflow exists; none ships in this repository today.
 
 Solo projects can skip this; it matters the moment someone else sends a PR.
 
 ---
 
-## 6. Tag the first release
+## 6. Tag the 0.2.0 release
 
-A tag is what makes a version linkable from the itch page, and the `export-windows` workflow uses it to
-build and attach the zip.
+This is the repository's second release: the initial source drop is already on `main`, and 0.2.0 adds the
+expansion. A tag is what makes a version linkable from the itch page and what the GPL source distribution
+is keyed to.
 
 ```powershell
-git tag -a v0.1.0 -m "RIFTWARD 0.1.0 - first public build"
-git push origin v0.1.0
+git tag -a v0.2.0 -m "RIFTWARD 0.2.0 - second public build"
+git push origin v0.2.0
 ```
 
 Then GitHub → **Releases** → **Draft a new release**:
 
-- Tag: `v0.1.0`
-- Title: `RIFTWARD 0.1.0`
-- Description: paste the body of `docs/STORE_PAGE.md` (or a short version), plus
+- Tag: `v0.2.0`
+- Title: `RIFTWARD 0.2.0`
+- Description: paste the release notes from `docs/releases/v0.2.0.md` (or a short version), plus
   `Windows 10/11, DirectX 12 GPU. Unzip and run RIFTWARD.exe.`
-- Publish. The action attaches `RIFTWARD-win64.zip` and `SHA256SUMS.txt` automatically; if the workflow
-  failed, upload them by hand.
+- Publish. There is no release workflow, so upload `release/RIFTWARD-win64.zip` and
+  `release/SHA256SUMS.txt` by hand.
 
 GitHub also offers **Source code (zip)** on every release — that is your GPL source distribution, no
 extra work.
@@ -182,7 +175,7 @@ must make the corresponding source available.**
 - Commercial use, including paid distribution, is allowed under GPL-3.0. You are not giving away the
   right to sell the game.
 
-Full obligations: sections 4–6 of [LICENSE](LICENSE).
+Full obligations: sections 4–6 of [LICENSE](../LICENSE).
 
 ---
 
@@ -191,7 +184,7 @@ Full obligations: sections 4–6 of [LICENSE](LICENSE).
 - **Never commit build output.** `build/`, `release/`, `.build/`, `.godot/` are ignored. If someone runs
   `git add -f build/`, history gets a 100 MB+ blob that is painful to remove (`git filter-repo`).
 - **Line endings.** `.gitattributes` forces LF in the repo and lets Git check out native endings. Do not
-  remove it on Windows; the CI suites and `.gd` scripts assume consistent newlines.
+  remove it on Windows; the test suites and `.gd` scripts assume consistent newlines.
 - **Absolute paths.** `docs/TECHNICAL.md` and README examples reference `D:\godotGa\game`. That's fine
   in docs, but never let a runtime script depend on it — the game must run from any path.
 - **The `.uid` files are intentional.** Godot 4.4+ writes `*.gd.uid`; commit them so scene references

@@ -7,6 +7,7 @@ signal booted
 const UI_SCRIPT_PATH := "res://ui/ui_root.gd"
 const DEPLOYMENT_SCRIPT_PATH := "res://features/run/deployment.gd"
 const SETTINGS_PATH := "user://settings.cfg"
+const TUTORIAL_SEED := 20260225
 
 var ui: Node = null
 var deployment: Node = null
@@ -79,6 +80,11 @@ const DEFAULT_SETTINGS := {
 	"ads_sensitivity_scale": 0.7,
 	"invert_y": false,
 	"fullscreen": false,
+	"window_mode": "windowed",
+	"resolution": "1600x900",
+	"render_scale": 1.0,
+	"anti_aliasing": "fxaa",
+	"fps_limit": 0,
 	"vsync": true,
 	"ui_scale": 1.0,
 	"reduce_motion": false,
@@ -91,6 +97,11 @@ const DEFAULT_SETTINGS := {
 	"minimap": true,
 	"bindings": {},
 }
+
+## Offered windowed resolutions. "native" resolves to the active monitor size.
+const STANDARD_RESOLUTIONS: Array[String] = ["1280x720", "1600x900", "1920x1080", "2560x1440", "3840x2160"]
+const WINDOW_MODES: Array[String] = ["windowed", "borderless", "fullscreen"]
+const ANTI_ALIASING_MODES: Array[String] = ["off", "fxaa", "msaa2", "msaa4", "taa"]
 
 
 func _ready() -> void:
@@ -376,7 +387,8 @@ func start_deployment(
 	threat: int = 1,
 	mutators: Array = [],
 	difficulty_id: StringName = &"",
-	mode_id: StringName = &"normal"
+	mode_id: StringName = &"normal",
+	map_id: StringName = &""
 ) -> void:
 	if _loading or _deployment_is_active():
 		return
@@ -391,7 +403,8 @@ func start_deployment(
 	current_screen = &"loading"
 	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	_set_fallback_visible(false)
-	_ui_call("show_loading", ["Preparing the Reach", 0.0])
+	var brief := LoadingBrief.build(contract_id, seed_value, threat, difficulty_id, mode_id, map_id)
+	_ui_call("show_loading", ["Preparing the Reach", 0.0, brief])
 	AudioDirector.play_ui(&"ui_confirm")
 	await get_tree().process_frame
 	var instance = deployment_script.new()
@@ -410,8 +423,10 @@ func start_deployment(
 	if not difficulty_id.is_empty():
 		ProfileState.set_last_difficulty(difficulty_id)
 	ProfileState.set_last_mode(mode_id)
+	if map_id != &"":
+		ProfileState.set_last_map(map_id)
 	if deployment.has_method("setup"):
-		deployment.setup(contract_id, seed_value, threat, mutators, difficulty_id, mode_id)
+		deployment.setup(contract_id, seed_value, threat, mutators, difficulty_id, mode_id, map_id)
 	else:
 		push_error("[App] Deployment has no setup() method.")
 		_loading = false
@@ -419,6 +434,22 @@ func start_deployment(
 
 func _deployment_is_active() -> bool:
 	return deployment != null and is_instance_valid(deployment)
+
+
+## Guided first-run onboarding. Fixed seed/map, no hostiles, no storm.
+func start_tutorial() -> void:
+	if _loading or _deployment_is_active():
+		return
+	start_deployment(&"salvage_sweep", TUTORIAL_SEED, 1, [], &"patrol", &"tutorial")
+
+
+func skip_tutorial() -> void:
+	if not is_deployment_active() or not RunState.is_tutorial():
+		return
+	ProfileState.set_tutorial_done()
+	ProfileState.save_now()
+	RunState.end_run(true, "Field training skipped.")
+	EventBus.notification_requested.emit("Training skipped", "You can replay Field Training from the main menu.", &"info")
 
 
 func _free_deployment() -> void:
@@ -559,15 +590,17 @@ func get_setting(key: String, fallback: Variant = null) -> Variant:
 
 func set_setting(key: String, value: Variant) -> void:
 	settings[key] = value
+	if key == "fullscreen":
+		settings["window_mode"] = "borderless" if bool(value) else "windowed"
+	elif key == "window_mode":
+		settings["fullscreen"] = String(value) != "windowed"
 	_apply_setting(key, value)
 	EventBus.settings_changed.emit(key, value)
 
 
 func _apply_setting(key: String, value: Variant) -> void:
 	match key:
-		"fullscreen":
-			_apply_display_settings()
-		"vsync":
+		"fullscreen", "window_mode", "resolution", "vsync", "render_scale", "anti_aliasing", "fps_limit", "quality":
 			_apply_display_settings()
 		"master_volume", "music_volume", "sfx_volume", "ui_volume":
 			_apply_audio_settings()
@@ -582,16 +615,206 @@ func _apply_audio_settings() -> void:
 	AudioDirector.set_bus_volume("UI", float(get_setting("ui_volume")))
 
 
-func _apply_display_settings() -> void:
+# ---------------------------------------------------------------------------
+# Display settings
+# ---------------------------------------------------------------------------
+
+func _format_resolution_label(size: Vector2i) -> String:
+	return "%d x %d" % [size.x, size.y]
+
+
+func _native_resolution() -> Vector2i:
+	if DisplayServer.get_name() == "headless":
+		return Vector2i(1600, 900)
+	var size := DisplayServer.screen_get_size(DisplayServer.window_get_current_screen())
+	if size.x <= 0 or size.y <= 0:
+		return Vector2i(1600, 900)
+	return size
+
+
+func _parse_resolution(value: String) -> Vector2i:
+	var clean := value.strip_edges()
+	if clean == "native":
+		return _native_resolution()
+	var parts := clean.split("x", false)
+	if parts.size() != 2:
+		return Vector2i(1600, 900)
+	return Vector2i(maxi(320, int(parts[0])), maxi(240, int(parts[1])))
+
+
+## [{label: "1600 x 900", value: "1600x900"}, ...] plus a native monitor entry.
+## Falls back to the static list under the headless display server.
+func get_resolution_options() -> Array[Dictionary]:
+	var options: Array[Dictionary] = []
+	if DisplayServer.get_name() != "headless":
+		options.append({
+			"label": "Native (%s)" % _format_resolution_label(_native_resolution()),
+			"value": "native",
+		})
+	for resolution in STANDARD_RESOLUTIONS:
+		options.append({"label": _format_resolution_label(_parse_resolution(resolution)), "value": resolution})
+	return options
+
+
+func get_window_mode_options() -> Array[Dictionary]:
+	return [
+		{"label": "Windowed", "value": "windowed"},
+		{"label": "Borderless Fullscreen", "value": "borderless"},
+		{"label": "Fullscreen", "value": "fullscreen"},
+	]
+
+
+func get_aa_options() -> Array[Dictionary]:
+	return [
+		{"label": "Off", "value": "off"},
+		{"label": "FXAA", "value": "fxaa"},
+		{"label": "MSAA 2x", "value": "msaa2"},
+		{"label": "MSAA 4x", "value": "msaa4"},
+		{"label": "TAA", "value": "taa"},
+	]
+
+
+func get_fps_options() -> Array[Dictionary]:
+	return [
+		{"label": "Unlimited", "value": 0},
+		{"label": "30 FPS", "value": 30},
+		{"label": "60 FPS", "value": 60},
+		{"label": "120 FPS", "value": 120},
+		{"label": "144 FPS", "value": 144},
+	]
+
+
+## Human-readable monitor summary, e.g. "2560 x 1440 - 165 Hz".
+func get_display_summary() -> String:
+	if DisplayServer.get_name() == "headless":
+		return "Headless display"
+	var size := _native_resolution()
+	var summary := _format_resolution_label(size)
+	var refresh := DisplayServer.screen_get_refresh_rate(DisplayServer.window_get_current_screen())
+	if refresh > 0.0:
+		summary += " - %d Hz" % int(round(refresh))
+	return summary
+
+
+func _sanitize_display_settings() -> void:
+	var mode := String(settings.get("window_mode", "windowed"))
+	if not (mode in WINDOW_MODES):
+		mode = "borderless" if bool(settings.get("fullscreen", false)) else "windowed"
+	settings["window_mode"] = mode
+	settings["fullscreen"] = mode != "windowed"
+	settings["resolution"] = String(settings.get("resolution", "1600x900"))
+	settings["render_scale"] = clampf(float(settings.get("render_scale", 1.0)), 0.5, 1.0)
+	var aa := String(settings.get("anti_aliasing", "fxaa"))
+	if not (aa in ANTI_ALIASING_MODES):
+		aa = "fxaa"
+	settings["anti_aliasing"] = aa
+	settings["fps_limit"] = maxi(0, int(settings.get("fps_limit", 0)))
+	var quality := String(settings.get("quality", "high"))
+	if not (quality in ["low", "medium", "high", "ultra"]):
+		quality = "high"
+	settings["quality"] = quality
+
+
+func _apply_anti_aliasing(value: String) -> void:
+	var viewport := get_viewport()
+	if viewport == null:
+		return
+	var msaa := Viewport.MSAA_DISABLED
+	var screen_space := Viewport.SCREEN_SPACE_AA_DISABLED
+	var taa := false
+	match value:
+		"off":
+			pass
+		"msaa2":
+			msaa = Viewport.MSAA_2X
+		"msaa4":
+			msaa = Viewport.MSAA_4X
+		"taa":
+			msaa = Viewport.MSAA_2X
+			taa = true
+		_:
+			screen_space = Viewport.SCREEN_SPACE_AA_FXAA
+	viewport.msaa_3d = msaa
+	viewport.screen_space_aa = screen_space
+	viewport.use_taa = taa
+
+
+func _apply_quality_preset(value: String) -> void:
+	var viewport := get_viewport()
+	if viewport == null:
+		return
+	var shadow_atlas := 4096
+	var lod_threshold := 1.0
+	var debanding := true
+	match value:
+		"low":
+			shadow_atlas = 1024
+			lod_threshold = 2.0
+			debanding = false
+		"medium":
+			shadow_atlas = 2048
+			lod_threshold = 1.5
+			debanding = false
+		"ultra":
+			shadow_atlas = 8192
+			lod_threshold = 0.8
+		_:
+			pass
+	viewport.positional_shadow_atlas_size = shadow_atlas
+	viewport.mesh_lod_threshold = lod_threshold
+	viewport.use_debanding = debanding
+
+
+## Applies every display setting to the window, engine and root viewport.
+## Window/OS mutation is skipped on the headless display server; viewport and
+## engine properties are still applied so the mapping is testable.
+func apply_display_settings() -> void:
+	var headless := DisplayServer.get_name() == "headless"
+	if not headless:
+		if bool(get_setting("vsync", true)):
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
+		else:
+			DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	Engine.max_fps = maxi(0, int(get_setting("fps_limit", 0)))
+	var viewport := get_viewport()
+	if viewport != null:
+		viewport.scaling_3d_scale = clampf(float(get_setting("render_scale", 1.0)), 0.5, 1.0)
+	_apply_anti_aliasing(String(get_setting("anti_aliasing", "fxaa")))
+	_apply_quality_preset(String(get_setting("quality", "high")))
+	if headless:
+		return
 	var window := get_window()
 	if window == null:
 		return
-	var fullscreen := bool(get_setting("fullscreen"))
-	window.mode = Window.MODE_FULLSCREEN if fullscreen else Window.MODE_WINDOWED
-	if bool(get_setting("vsync")):
-		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_ENABLED)
-	else:
-		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	var window_mode := String(get_setting("window_mode", "windowed"))
+	if not (window_mode in WINDOW_MODES):
+		window_mode = "borderless" if bool(get_setting("fullscreen", false)) else "windowed"
+	match window_mode:
+		"fullscreen":
+			window.mode = Window.MODE_EXCLUSIVE_FULLSCREEN
+		"borderless":
+			window.mode = Window.MODE_FULLSCREEN
+		_:
+			window.mode = Window.MODE_WINDOWED
+	if window_mode != "windowed":
+		return
+	var target := _parse_resolution(String(get_setting("resolution", "1600x900")))
+	var screen := DisplayServer.window_get_current_screen()
+	var screen_size := DisplayServer.screen_get_size(screen)
+	if screen_size.x > 0 and screen_size.y > 0:
+		target.x = mini(target.x, screen_size.x)
+		target.y = mini(target.y, screen_size.y)
+	window.size = target
+	var usable := DisplayServer.screen_get_usable_rect(screen)
+	if usable.size.x > 0 and usable.size.y > 0:
+		window.position = usable.position + (usable.size - target) / 2
+	elif screen_size.x > 0 and screen_size.y > 0:
+		window.position = (screen_size - target) / 2
+
+
+## Backward-compatible name used by boot and legacy call sites.
+func _apply_display_settings() -> void:
+	apply_display_settings()
 
 
 func load_settings() -> void:
@@ -601,7 +824,12 @@ func load_settings() -> void:
 		for key in DEFAULT_SETTINGS.keys():
 			if cfg.has_section_key("settings", key):
 				settings[key] = cfg.get_value("settings", key)
+		# Legacy configs only carried `fullscreen`; derive the window mode once.
+		if not cfg.has_section_key("settings", "window_mode"):
+			settings["window_mode"] = "borderless" if bool(settings.get("fullscreen", false)) else "windowed"
+	_sanitize_display_settings()
 	_apply_saved_bindings()
+	_apply_display_settings()
 
 
 func save_settings() -> void:

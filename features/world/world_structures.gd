@@ -53,6 +53,8 @@ func build_all(
 				_build_choir_post(root, kit, rng)
 			"colony_ruins":
 				_build_colony_ruins(root, kit, rng)
+			"derelict_ship":
+				_build_derelict_ship(root, kit, rng)
 			"exfil_pad":
 				_build_exfil_pad(root, kit, rng)
 			_:
@@ -108,20 +110,23 @@ func build_all(
 # =============================================================================
 func _build_camp(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator) -> void:
 	_pad(kit, 20.0, &"pad")
-	# Command hab facing the pad center.
-	kit.box(Vector3(10.0, 3.2, 7.0), Vector3(0.0, 1.75, -15.0), &"ivory")
-	kit.box(Vector3(10.6, 0.35, 7.6), Vector3(0.0, 3.55, -15.0), &"rust")
-	kit.box(Vector3(2.0, 2.2, 0.3), Vector3(0.0, 1.2, -11.4), &"dark")
-	kit.box(Vector3(1.3, 0.16, 0.1), Vector3(0.0, 2.6, -11.2), &"glow_teal", Vector3.ZERO, false)
+	# Enterable command hab facing the pad center.
+	_interior_shell(root, kit, Vector3(0.0, 0.0, -15.0), Vector3(9.0, 0.0, 6.0), [0], &"ivory", &"concrete", 3.4, Color(0.35, 0.95, 0.85), &"glow_teal")
+	kit.box(Vector3(10.6, 0.35, 7.6), Vector3(0.0, 3.75, -15.0), &"rust")
+	_interior_partition(kit, Vector3(0.0, 0.0, -15.0), Vector3(9.0, 0.0, 6.0), 1, -1.0, true, &"ivory_warm", 3.4)
+	_crates(kit, rng, Vector3(2.0, 0.0, -16.5), 2)
+	_interior_light(root, Vector3(-2.0, 2.2, -16.0), Color(1.0, 0.72, 0.42), 0.9, 7.0)
 	_antenna(kit, Vector3(3.2, 3.7, -15.0), 11.0)
 	# Rooftop shade + rail.
 	kit.box(Vector3(6.0, 0.2, 4.0), Vector3(-2.2, 5.6, -15.0), &"ivory_warm")
 	kit.cylinder(0.12, 0.12, 2.0, 8, Vector3(-5.0, 4.7, -17.0), &"steel", Vector3.ZERO, false)
 	kit.cylinder(0.12, 0.12, 2.0, 8, Vector3(-5.0, 4.7, -13.0), &"steel", Vector3.ZERO, false)
-	# Tents around the pad.
+	# Tents around the pad (skip the footprint now occupied by the command hab).
 	for t in 3:
 		var ang := TAU * float(t) / 3.0 + 0.6
 		var tp := Vector3(cos(ang) * 15.0, 0.0, sin(ang) * 15.0)
+		if tp.z < -8.0 and absf(tp.x) < 8.0:
+			continue
 		kit.cylinder(2.7, 2.7, 1.1, 8, tp + Vector3(0.0, 0.7, 0.0), &"fabric")
 		kit.cylinder(0.15, 2.9, 2.0, 8, tp + Vector3(0.0, 2.2, 0.0), &"fabric", Vector3.ZERO, false)
 		kit.cylinder(0.2, 0.2, 3.2, 6, tp + Vector3(0.0, 3.4, 0.0), &"steel", Vector3.ZERO, false)
@@ -201,8 +206,12 @@ func _build_relay_spire(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator) 
 func _build_crash_site(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator) -> void:
 	# Scorched glass ground.
 	kit.cylinder(20.0, 22.0, 0.18, 16, Vector3(0.0, 0.02, 0.0), &"scorch", Vector3.ZERO, false)
-	# Broken hull, three sections at rough angles.
-	kit.box(Vector3(16.0, 4.2, 5.4), Vector3(-1.0, 2.3, 0.0), &"ivory", Vector3(0.0, 0.18, 0.06))
+	# Broken hull: the central section is enterable through both torn ends.
+	_interior_shell(root, kit, Vector3(-1.0, 0.0, 0.0), Vector3(15.0, 0.0, 4.6), [2, 3], &"ivory", &"steel", 3.6, Color(1.0, 0.55, 0.24), &"glow_ember")
+	kit.box(Vector3(16.6, 0.4, 6.0), Vector3(-1.0, 3.85, 0.0), &"rust", Vector3(0.0, 0.18, 0.06), false)
+	kit.box(Vector3(0.4, 4.2, 5.4), Vector3(-8.6, 2.3, 0.0), &"steel", Vector3.ZERO, false)
+	kit.box(Vector3(0.4, 4.2, 5.4), Vector3(6.6, 2.3, 0.0), &"steel", Vector3.ZERO, false)
+	_crates(kit, rng, Vector3(-3.0, 0.0, 0.0), 2)
 	kit.box(Vector3(9.0, 3.8, 5.0), Vector3(11.5, 1.9, 2.4), &"rust", Vector3(0.0, -0.35, 0.12))
 	kit.box(Vector3(7.0, 3.2, 4.2), Vector3(-11.0, 1.7, -2.0), &"steel", Vector3(0.0, 0.62, -0.05))
 	# Cockpit / nose.
@@ -241,12 +250,16 @@ func _build_vault(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator) -> voi
 	kit.box(Vector3(13.0, 9.0, 11.0), Vector3(11.0, 4.6, 0.0), &"ivory")
 	kit.box(Vector3(9.0, 4.0, 11.0), Vector3(0.0, 8.0, 0.0), &"ivory_warm")
 	kit.box(Vector3(9.4, 0.5, 11.4), Vector3(0.0, 10.2, 0.0), &"rust")
-	# Massive blast door recessed into the facade.
-	kit.box(Vector3(9.0, 7.0, 0.8), Vector3(0.0, 3.6, 5.4), &"steel")
+	# Open blast-door frame; the enterable Vault interior sits behind it.
 	kit.box(Vector3(10.0, 0.6, 1.2), Vector3(0.0, 7.3, 5.5), &"ivory")
 	kit.box(Vector3(10.0, 0.6, 1.2), Vector3(0.0, 0.3, 5.5), &"rust_dark")
-	kit.box(Vector3(0.18, 5.0, 0.2), Vector3(0.0, 3.6, 5.85), &"glow_teal", Vector3.ZERO, false)
+	kit.box(Vector3(0.18, 5.0, 0.2), Vector3(-4.6, 3.6, 5.85), &"glow_teal", Vector3.ZERO, false)
+	kit.box(Vector3(0.18, 5.0, 0.2), Vector3(4.6, 3.6, 5.85), &"glow_teal", Vector3.ZERO, false)
 	kit.box(Vector3(7.4, 0.25, 0.25), Vector3(0.0, 5.2, 5.85), &"glow_amber", Vector3.ZERO, false)
+	_interior_shell(root, kit, Vector3(0.0, 0.0, -1.5), Vector3(8.0, 0.0, 11.0), [0], &"ivory", &"concrete", 4.2, Color(0.35, 0.95, 0.85), &"glow_teal")
+	_interior_partition(kit, Vector3(0.0, 0.0, -1.5), Vector3(8.0, 0.0, 11.0), 1, -2.0, true, &"ivory_warm", 4.2)
+	_crates(kit, rng, Vector3(0.0, 0.0, -5.0), 3)
+	_dungeon_anchor(root, Vector3(0.0, 0.5, 7.6))
 	# Approach ramp / steps.
 	kit.box(Vector3(10.0, 0.7, 3.0), Vector3(0.0, 0.35, 7.4), &"concrete")
 	kit.box(Vector3(8.0, 1.4, 2.4), Vector3(0.0, 0.70, 5.9), &"concrete")
@@ -547,11 +560,12 @@ func _build_ashen_stockade(root: Node3D, kit: MeshKit, rng: RandomNumberGenerato
 		var tower_pos := Vector3(cos(angle) * 20.0, 0.0, sin(angle) * 20.0)
 		_watchtower(kit, tower_pos, -angle)
 		kit.box(Vector3(2.2, 2.2, 2.2), tower_pos + Vector3(0.0, 8.6, 0.0), &"rust_dark", Vector3(0.0, -angle, 0.0))
-	# Command hall and cages.
-	kit.box(Vector3(14.0, 4.2, 9.0), Vector3(0.0, 2.4, -7.5), &"rust")
-	kit.box(Vector3(14.6, 0.5, 9.6), Vector3(0.0, 4.7, -7.5), &"rust_dark")
-	kit.box(Vector3(2.2, 2.6, 0.4), Vector3(0.0, 1.6, -2.9), &"dark")
-	kit.box(Vector3(1.6, 0.2, 0.1), Vector3(0.0, 3.4, -2.7), &"glow_ember", Vector3.ZERO, false)
+	# Enterable command hall and cages.
+	_interior_shell(root, kit, Vector3(0.0, 0.0, -7.5), Vector3(13.0, 0.0, 8.0), [0], &"rust", &"concrete", 3.8, Color(1.0, 0.42, 0.18), &"glow_ember")
+	kit.box(Vector3(14.6, 0.5, 9.6), Vector3(0.0, 4.15, -7.5), &"rust_dark")
+	_interior_partition(kit, Vector3(0.0, 0.0, -7.5), Vector3(13.0, 0.0, 8.0), 0, -1.8, true, &"rust_dark", 3.8)
+	_crates(kit, rng, Vector3(3.0, 0.0, -9.0), 2)
+	_dungeon_anchor(root, Vector3(0.0, 0.5, -2.0))
 	for cage in 3:
 		var cage_x := -9.0 + float(cage) * 9.0
 		kit.box(Vector3(3.4, 2.4, 3.4), Vector3(cage_x, 1.3, 8.0), &"steel")
@@ -616,11 +630,12 @@ func _build_bloom_hive(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator) -
 # =============================================================================
 func _build_choir_post(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator) -> void:
 	_pad(kit, 18.0, &"concrete")
-	# Bunker and dish mast.
-	kit.box(Vector3(12.0, 3.4, 8.0), Vector3(0.0, 1.9, -4.0), &"ivory")
-	kit.box(Vector3(12.6, 0.4, 8.4), Vector3(0.0, 3.8, -4.0), &"steel")
-	kit.box(Vector3(2.8, 2.4, 0.3), Vector3(0.0, 1.5, 0.2), &"dark")
-	kit.box(Vector3(2.0, 0.2, 0.1), Vector3(0.0, 3.1, 0.4), &"glow_teal", Vector3.ZERO, false)
+	# Enterable bunker and dish mast.
+	_interior_shell(root, kit, Vector3(0.0, 0.0, -4.0), Vector3(11.0, 0.0, 7.0), [0], &"ivory", &"concrete", 3.2, Color(0.35, 0.95, 1.0), &"glow_teal")
+	kit.box(Vector3(12.6, 0.4, 8.4), Vector3(0.0, 3.4, -4.0), &"steel")
+	_interior_partition(kit, Vector3(0.0, 0.0, -4.0), Vector3(11.0, 0.0, 7.0), 0, -1.5, true, &"ivory_warm", 3.2)
+	_crates(kit, rng, Vector3(-3.0, 0.0, -5.0), 2)
+	_dungeon_anchor(root, Vector3(0.0, 0.5, 1.5))
 	kit.cylinder(0.8, 0.8, 10.0, 8, Vector3(0.0, 8.0, -4.0), &"steel", Vector3.ZERO, true)
 	kit.cylinder(5.0, 5.0, 0.5, 16, Vector3(0.0, 13.4, -4.0), &"ivory_warm", Vector3(0.7, 0.3, 0.1), true)
 	kit.cylinder(0.3, 0.3, 3.0, 6, Vector3(0.0, 13.4, -8.6), &"steel", Vector3(PI * 0.5, 0.0, 0.0), false)
@@ -650,9 +665,12 @@ func _build_choir_post(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator) -
 # =============================================================================
 func _build_colony_ruins(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator) -> void:
 	_pad(kit, 20.0, &"concrete")
-	# Broken hab blocks arranged around a street.
-	kit.box(Vector3(12.0, 5.0, 9.0), Vector3(-11.0, 2.5, -4.0), &"ivory")
-	kit.box(Vector3(12.6, 0.4, 9.4), Vector3(-11.0, 5.2, -4.0), &"rust_dark")
+	# Broken hab blocks arranged around a street; the western block is enterable.
+	_interior_shell(root, kit, Vector3(-11.0, 0.0, -4.0), Vector3(11.0, 0.0, 8.0), [2], &"ivory", &"concrete", 3.8, Color(1.0, 0.68, 0.35), &"glow_amber")
+	kit.box(Vector3(12.6, 0.4, 9.4), Vector3(-11.0, 3.95, -4.0), &"rust_dark")
+	_interior_partition(kit, Vector3(-11.0, 0.0, -4.0), Vector3(11.0, 0.0, 8.0), 0, 2.0, true, &"ivory_warm", 3.8)
+	_crates(kit, rng, Vector3(-13.0, 0.0, -6.0), 2)
+	_dungeon_anchor(root, Vector3(-5.4, 0.5, -4.0))
 	kit.box(Vector3(4.0, 5.0, 9.0), Vector3(-5.0, 2.5, -4.0), &"ivory_warm")
 	kit.box(Vector3(9.0, 3.4, 7.0), Vector3(-12.0, 1.7, 8.0), &"concrete")
 	kit.box(Vector3(11.0, 6.5, 8.0), Vector3(11.0, 3.25, 5.0), &"ivory")
@@ -675,6 +693,49 @@ func _build_colony_ruins(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator)
 	_banner(kit, Vector3(2.0, 0.0, 12.0), 0.2, &"rust")
 	_add_light(root, Vector3(-11.0, 4.0, -4.0), Color(1.0, 0.68, 0.35), 0.9, 12.0)
 	_add_light(root, Vector3(11.0, 6.0, 5.0), Color(1.0, 0.55, 0.24), 0.8, 10.0)
+
+
+# =============================================================================
+# POI: derelict ship (enterable freighter)
+# =============================================================================
+func _build_derelict_ship(root: Node3D, kit: MeshKit, rng: RandomNumberGenerator) -> void:
+	# Landing scar and drag marks.
+	kit.cylinder(26.0, 29.0, 0.14, 22, Vector3(0.0, 0.05, 0.0), &"scorch", Vector3.ZERO, false)
+	for skid in 3:
+		kit.box(Vector3(2.0, 0.12, 22.0), Vector3(-9.0 + float(skid) * 9.0, 0.10, 0.0), &"scorch", Vector3.ZERO, false)
+	# Enterable main hull: cargo bay / hold / cockpit behind two bulkheads.
+	_interior_shell(root, kit, Vector3(0.0, 0.0, 0.0), Vector3(26.0, 0.0, 9.0), [0], &"ivory", &"steel", 4.0, Color(0.35, 0.95, 0.85), &"glow_teal")
+	kit.box(Vector3(30.0, 0.8, 12.0), Vector3(0.0, 4.35, 0.0), &"ivory", Vector3.ZERO, false)
+	kit.box(Vector3(30.6, 0.4, 12.6), Vector3(0.0, 4.8, 0.0), &"rust", Vector3.ZERO, false)
+	# Nose wedge and cockpit glass.
+	kit.prism(Vector3(12.0, 4.0, 8.0), Vector3(0.0, 2.2, -8.5), &"ivory", Vector3(0.0, PI * 0.5, 0.0))
+	kit.box(Vector3(6.0, 2.0, 4.0), Vector3(0.0, 1.5, -9.0), &"steel")
+	kit.box(Vector3(4.0, 0.15, 3.0), Vector3(0.0, 2.7, -10.1), &"glow_teal", Vector3.ZERO, false)
+	# Side ribs give the hull readable scale.
+	for rib in 5:
+		var rx := -12.0 + float(rib) * 6.0
+		kit.box(Vector3(0.5, 4.4, 12.4), Vector3(rx, 2.2, 0.0), &"rust_dark", Vector3.ZERO, false)
+	# Torn wings and engine pods.
+	kit.box(Vector3(11.0, 0.4, 5.0), Vector3(-17.0, 2.6, 2.0), &"ivory", Vector3(0.0, 0.2, 0.0))
+	kit.box(Vector3(11.0, 0.4, 5.0), Vector3(17.0, 2.6, 2.0), &"ivory", Vector3(0.0, -0.2, 0.0))
+	for side in [-1.0, 1.0]:
+		kit.cylinder(1.8, 2.2, 3.0, 10, Vector3(side * 4.0, 2.0, 7.5), &"steel", Vector3(PI * 0.5, 0.0, 0.0))
+		kit.cylinder(1.2, 1.2, 0.4, 10, Vector3(side * 4.0, 2.0, 9.1), &"glow_ember", Vector3(PI * 0.5, 0.0, 0.0), false)
+	# Boarding ramp up to the rear door.
+	kit.box(Vector3(5.2, 0.4, 7.2), Vector3(0.0, 1.15, 7.8), &"steel", Vector3(0.30, 0.0, 0.0))
+	for rail in 2:
+		kit.box(Vector3(0.18, 0.9, 7.2), Vector3(-2.5 + float(rail) * 5.0, 1.7, 7.8), &"rust_dark", Vector3(0.30, 0.0, 0.0), false)
+	# Bulkheads and interior props.
+	_interior_partition(kit, Vector3(0.0, 0.0, 0.0), Vector3(26.0, 0.0, 9.0), 0, -7.0, true, &"steel", 4.0)
+	_interior_partition(kit, Vector3(0.0, 0.0, 0.0), Vector3(26.0, 0.0, 9.0), 0, 7.0, true, &"steel", 4.0)
+	kit.box(Vector3(3.0, 1.0, 1.5), Vector3(-10.0, 0.9, 0.0), &"steel")
+	kit.box(Vector3(3.0, 1.0, 1.5), Vector3(10.0, 0.9, 0.0), &"steel")
+	_crates(kit, rng, Vector3(-3.0, 0.0, 0.0), 4)
+	_crates(kit, rng, Vector3(3.0, 0.0, 0.0), 2)
+	_lamp(kit, Vector3(-11.0, 0.0, 3.0), &"glow_teal")
+	_lamp(kit, Vector3(11.0, 0.0, -3.0), &"glow_amber")
+	_add_light(root, Vector3(0.0, 3.0, 0.0), Color(0.35, 0.95, 0.85), 1.2, 16.0)
+	_dungeon_anchor(root, Vector3(0.0, 0.5, 6.5))
 
 
 # =============================================================================
@@ -752,6 +813,174 @@ func _finalize(root: Node3D, kit: MeshKit, info: Dictionary) -> void:
 	anchor.name = "Anchor"
 	root.add_child(anchor)
 	anchor.set_meta("world_info", info)
+
+
+# =============================================================================
+# Enterable interiors
+# =============================================================================
+
+const INTERIOR_WALL := 0.5
+const INTERIOR_DOOR_W := 4.2
+const INTERIOR_DOOR_H := 3.2
+
+
+## Builds a hollow room: floor, ceiling, four walls and optional 4.2m doorways.
+## Doorways are deliberately wider than the navmesh agent diameter so the baked
+## navmesh can path through them.
+func _interior_shell(
+	root: Node3D,
+	kit: MeshKit,
+	center: Vector3,
+	inner: Vector3,
+	door_sides: Array,
+	wall_mat: StringName,
+	floor_mat: StringName,
+	height: float = 3.8,
+	light_color: Color = Color(0.45, 0.95, 0.85),
+	accent: StringName = &"glow_teal"
+) -> void:
+	var wall_len_x := inner.x + INTERIOR_WALL * 2.0
+	var wall_len_z := inner.z + INTERIOR_WALL * 2.0
+	kit.box(Vector3(wall_len_x, 0.3, wall_len_z), center + Vector3(0.0, 0.15, 0.0), floor_mat)
+	kit.box(Vector3(wall_len_x, 0.3, wall_len_z), center + Vector3(0.0, height + 0.15, 0.0), wall_mat)
+	for side in 4:
+		_interior_wall(kit, center, inner, side, side in door_sides, wall_mat, height)
+	for rib in 3:
+		var rz := center.z - inner.z * 0.33 + float(rib) * inner.z * 0.33
+		kit.box(Vector3(wall_len_x, 0.16, 0.16), Vector3(center.x, height - 0.1, rz), accent, Vector3.ZERO, false)
+	_interior_light(root, center + Vector3(0.0, height - 0.7, 0.0), light_color, 1.4, maxf(inner.x, inner.z) * 0.8)
+	_interior_spawns(root, center, inner, 4)
+
+
+func _interior_wall(
+	kit: MeshKit,
+	center: Vector3,
+	inner: Vector3,
+	side: int,
+	has_door: bool,
+	wall_mat: StringName,
+	height: float
+) -> void:
+	var t := INTERIOR_WALL
+	var wall_len := 0.0
+	var pos := Vector3.ZERO
+	var size := Vector3.ZERO
+	var axis_x := side == 0 or side == 1
+	if axis_x:
+		wall_len = inner.x + t * 2.0
+		var z := center.z + (inner.z * 0.5 + t * 0.5) if side == 0 else center.z - (inner.z * 0.5 + t * 0.5)
+		pos = Vector3(center.x, height * 0.5, z)
+		size = Vector3(wall_len, height, t)
+	else:
+		wall_len = inner.z + t * 2.0
+		var x := center.x + (inner.x * 0.5 + t * 0.5) if side == 2 else center.x - (inner.x * 0.5 + t * 0.5)
+		pos = Vector3(x, height * 0.5, center.z)
+		size = Vector3(t, height, wall_len)
+	if not has_door:
+		kit.box(size, pos, wall_mat)
+		return
+	var door_w := minf(INTERIOR_DOOR_W, wall_len * 0.62)
+	var seg_len := (wall_len - door_w) * 0.5
+	for side_sign in [-1.0, 1.0]:
+		var offset: float = float(side_sign) * (door_w * 0.5 + seg_len * 0.5)
+		var seg_pos := pos
+		var seg_size := size
+		if axis_x:
+			seg_pos.x += offset
+			seg_size.x = seg_len
+		else:
+			seg_pos.z += offset
+			seg_size.z = seg_len
+		kit.box(seg_size, seg_pos, wall_mat)
+	var lintel_h := maxf(0.2, height - INTERIOR_DOOR_H)
+	var lintel_pos := pos
+	var lintel_size := size
+	lintel_pos.y = INTERIOR_DOOR_H + lintel_h * 0.5
+	if axis_x:
+		lintel_size.x = door_w
+	else:
+		lintel_size.z = door_w
+	lintel_size.y = lintel_h
+	kit.box(lintel_size, lintel_pos, wall_mat)
+
+
+## Interior partition with an optional doorway. `axis` 0 runs across X (a wall
+## plane at center.x + offset); axis 1 runs across Z.
+func _interior_partition(
+	kit: MeshKit,
+	center: Vector3,
+	inner: Vector3,
+	axis: int,
+	offset: float,
+	has_door: bool,
+	wall_mat: StringName,
+	height: float
+) -> void:
+	var t := 0.4
+	var wall_len := inner.z if axis == 0 else inner.x
+	var pos := Vector3(center.x + offset, height * 0.5, center.z) if axis == 0 else Vector3(center.x, height * 0.5, center.z + offset)
+	var size := Vector3(t, height, wall_len) if axis == 0 else Vector3(wall_len, height, t)
+	if not has_door:
+		kit.box(size, pos, wall_mat)
+		return
+	var door_w := minf(INTERIOR_DOOR_W, wall_len * 0.62)
+	var seg_len := (wall_len - door_w) * 0.5
+	for side_sign in [-1.0, 1.0]:
+		var seg_pos := pos
+		var seg_size := size
+		if axis == 0:
+			seg_pos.z += side_sign * (door_w * 0.5 + seg_len * 0.5)
+			seg_size.z = seg_len
+		else:
+			seg_pos.x += side_sign * (door_w * 0.5 + seg_len * 0.5)
+			seg_size.x = seg_len
+		kit.box(seg_size, seg_pos, wall_mat)
+	var lintel_h := maxf(0.2, height - INTERIOR_DOOR_H)
+	var lintel_pos := pos
+	var lintel_size := size
+	lintel_pos.y = INTERIOR_DOOR_H + lintel_h * 0.5
+	if axis == 0:
+		lintel_size.z = door_w
+	else:
+		lintel_size.x = door_w
+	lintel_size.y = lintel_h
+	kit.box(lintel_size, lintel_pos, wall_mat)
+
+
+func _interior_spawns(root: Node3D, center: Vector3, inner: Vector3, count: int) -> void:
+	var offsets: Array[Vector3] = [
+		Vector3(0.0, 0.0, 0.0),
+		Vector3(inner.x * 0.30, 0.0, inner.z * 0.30),
+		Vector3(-inner.x * 0.30, 0.0, -inner.z * 0.30),
+		Vector3(inner.x * 0.30, 0.0, -inner.z * 0.30),
+		Vector3(-inner.x * 0.30, 0.0, inner.z * 0.30),
+	]
+	for i in mini(count, offsets.size()):
+		var marker := Marker3D.new()
+		marker.name = "InteriorSpawn_%02d" % i
+		marker.position = center + offsets[i] + Vector3(0.0, 0.25, 0.0)
+		marker.add_to_group("interior_spawn")
+		root.add_child(marker)
+
+
+func _interior_light(root: Node3D, pos: Vector3, color: Color, energy: float, range_m: float) -> void:
+	var light := OmniLight3D.new()
+	light.name = "InteriorLight"
+	light.position = pos
+	light.light_color = color
+	light.light_energy = energy
+	light.omni_range = range_m
+	light.omni_attenuation = 1.2
+	light.shadow_enabled = false
+	root.add_child(light)
+
+
+func _dungeon_anchor(root: Node3D, pos: Vector3) -> void:
+	var marker := Marker3D.new()
+	marker.name = "DungeonAnchor"
+	marker.position = pos
+	marker.add_to_group("dungeon_anchor")
+	root.add_child(marker)
 
 
 func _pad(kit: MeshKit, radius: float, mat: StringName) -> void:

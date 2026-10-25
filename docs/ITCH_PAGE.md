@@ -24,8 +24,10 @@ What you bring home rebuilds Waystation Kestrel. What you leave behind stays los
 
 ## The loop
 
-Deployments run on a clock: 18 minutes on Normal, 9 on Quick. Contracts sit alongside optional caches,
-bounties and Rift Shrines, so every run becomes the same question — one more detour, or get out?
+Deployments run on a clock: 18 minutes on Normal, 9 real minutes on Quick, 14 on Gauntlet. Five modes —
+Normal, Quick, Blackout, Gauntlet and Onslaught — change the clock, the storm, the light and the enemy
+pressure. Contracts sit alongside optional caches, bounties and Rift Shrines, so every run becomes the
+same question — one more detour, or get out?
 
 Calling extraction doesn't end the run. A dropship has to arrive and hold the pad for 75 seconds while
 the map closes in around you. Pick the wrong moment and the storm takes everything.
@@ -33,18 +35,23 @@ the map closes in around you. Pick the wrong moment and the storm takes everythi
 ## The frontier
 
 - A seeded 1.8 km x 1.8 km region, rebuilt on every drop
-- Three blended biomes and four map moods, one per difficulty preset
-- 16-20 points of interest — stockades, hives, listening posts, colony ruins — plus roads, roadside
-  outbuildings and landmark structures
+- Five planets and twelve selectable maps, eighteen weather states and a day/night cycle
+- 17-21 points of interest — stockades, hives, listening posts, colony ruins, a derelict freighter —
+  plus roads, roadside outbuildings and landmark structures
+- Enterable buildings and ship interiors, water to swim and lava to avoid
+- Three themed under-reach dungeons with procedural rooms, guardians and loot
+- Twenty world events per run pool, with three firing in each deployment and a Reach Event banner
 - Late-run pressure: a shrinking Collapse storm, a reinforcement director and timed endgame events
 
 ## Combat
 
-- 10 weapons across four slots: two primaries, a sidearm and an issued Combat Knife
+- 16 weapons across four slots: two primaries, a sidearm and an issued Combat Knife
 - Per-weapon ADS sights, a DMR and rail scope overlay, rarity variants and affixes
-- 12 active abilities, 4 discipline ultimates, 16 passive perks and 12 run-only Rift Mods
-- 14 enemy archetypes, 6 elites with affixes and 3 bosses with phases, across the Ashen, Bloom and Choir
+- 24 abilities (20 active + 4 ultimates), 24 passive perks and 12 run-only Rift Mods
+- 37 enemies — 20 archetypes, 11 elites with affixes and 6 bosses with phases — across the Ashen, Bloom and Choir
+- 13 contracts (7 classic + 6 staged operations), with four difficulty presets
 - Weak points, status effects, cover use, strafing and telegraphed attacks
+- A five-stage Field Training run for first-time players
 
 ## A squad that fights with you
 
@@ -53,8 +60,16 @@ Driftling pets. Issue follow, hold, focus and revive orders, and pick them up wh
 
 ## A home that grows
 
-Eight outpost modules with three tiers each, gated behind power and Nexus level. Every extraction feeds
-the next deployment.
+Eight outpost modules with three tiers each on a persistent 8x8 bay, gated behind power and Nexus level.
+Every extraction feeds the next deployment, and the outpost screen renders the base as a clickable
+isometric diorama.
+
+## A field terminal made for the fight
+
+The interface is image-first: weapon and gear silhouettes, Warden and Driftling portraits, planet
+portraits and map thumbnails, discipline medallions, an expandable outpost diorama and a Weather/
+Operations codex. Display settings cover window mode, resolution, render scale, anti-aliasing, frame
+cap and quality presets. Twelve new line icons join the bundled set; backgrounds are drawn in-engine.
 
 ## Progression
 
@@ -182,7 +197,7 @@ Download the new zip and replace the whole game folder. Your save folder stays u
 | Pricing | No payment (or `$0 or donate`) |
 | Platform | Windows |
 | Cover image | `release/store/cover_630x500.png` |
-| Version | `0.1.0` |
+| Version | `0.2.0` |
 | Visibility | Draft until the page and download are tested |
 
 ---

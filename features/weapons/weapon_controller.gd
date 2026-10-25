@@ -8,6 +8,7 @@ signal ammo_changed(mag: int, reserve: int)
 signal reload_state_changed(active: bool, progress: float)
 signal hit_confirmed(killed: bool, crit: bool)
 signal charge_changed(value: float)
+signal shot_fired(info: Dictionary)
 
 const SWITCH_KEYS := ["weapon_1", "weapon_2", "weapon_3", "weapon_4"]
 const SLOT_KEYS: Array[StringName] = [
@@ -468,6 +469,11 @@ func _fire_once(damage_mult: float) -> void:
 		_fire_hitscan(stats, damage_mult)
 	_apply_recoil(stats)
 	_view_kick = 1.0
+	shot_fired.emit({
+		"weapon_id": String(stats.get("id", "")),
+		"style": String(stats.get("style", "")),
+		"ammo": int(state.mag),
+	})
 	if int(state.mag) <= 0 and int(state.reserve) > 0:
 		start_reload()
 	player.call("update_hud")

@@ -64,7 +64,7 @@ After that, every rebuild is one command: `tools/build_export.ps1 -Zip` then `bu
 ### 4. After publishing
 
 - Download your own build once from a different browser to confirm the zip is intact.
-- Keep a version string on the upload (`0.1.0`) so players can tell builds apart.
+- Keep a version string on the upload (`0.2.0`) so players can tell builds apart.
 - Decide whether the page is free forever or has a minimum price; you can change it at any time.
 
 ---
@@ -76,14 +76,14 @@ Good for a private link, testers, or an open-source release.
 ```powershell
 git init
 git add .
-git commit -m "RIFTWARD 0.1.0"
+git commit -m "RIFTWARD 0.2.0"
 
 # create an empty repo on GitHub first, then:
 git remote add origin https://github.com/<you>/riftward.git
 git push -u origin main
 
-gh release create v0.1.0 release/RIFTWARD-win64.zip `
-  --title "RIFTWARD 0.1.0 - Windows" `
+gh release create v0.2.0 release/RIFTWARD-win64.zip `
+  --title "RIFTWARD 0.2.0 - Windows" `
   --notes-file docs/PLAYER_README.txt
 ```
 

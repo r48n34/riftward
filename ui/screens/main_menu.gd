@@ -106,6 +106,15 @@ func _build_quick_deploy() -> VBoxContainer:
 	hub_button.tooltip_text = "Enter Hub — contract board, mutators, loadout and outpost."
 	hub_button.pressed.connect(_on_enter_hub)
 	secondary.add_child(hub_button)
+	var training_label := "Replay Field Training" if ProfileState.get_tutorial_done() else "First Drop · Field Training"
+	var training_button := UIFactory.ghost_button(training_label, &"training")
+	training_button.custom_minimum_size = Vector2(0, 40)
+	training_button.tooltip_text = "Field Training — a guided five-stage onboarding run. Move, shoot, cast, loot, extract."
+	training_button.pressed.connect(func() -> void:
+		if App != null:
+			App.start_tutorial()
+	)
+	secondary.add_child(training_button)
 	var hint := UIFactory.label("Full contract board · mutators · loadout", "Micro", UIPalette.muted_dim)
 	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	secondary.add_child(hint)
@@ -152,12 +161,27 @@ func _pulse_glow() -> void:
 	tween.tween_property(_glow, "self_modulate:a", 0.55, 1.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 
-## Icon-only preview of the drop Quick Deploy will prefill in the preflight.
+## Visual preview of the drop Quick Deploy will prefill in the preflight: map
+## thumbnail, planet medallion, difficulty chip and the ContentDB mode clock.
 func _build_remembered_line() -> HBoxContainer:
 	var difficulty := _remembered_difficulty()
 	var preset := _remembered_preset(difficulty)
 	var mode := _remembered_mode()
-	var row := UIFactory.hbox(UIPalette.SP4)
+	var mode_data := ContentDB.get_game_mode(mode)
+	var row := UIFactory.hbox(UIPalette.SP3)
+	row.tooltip_text = "Remembered from your last drop. Quick Deploy opens the preflight with these selections."
+
+	var map_id := StringName(preset.get("id", &""))
+	if map_id != &"":
+		var thumb := UIMapThumbnail.new()
+		thumb.configure(map_id, Vector2(56, 34))
+		thumb.custom_minimum_size = Vector2(56, 34)
+		thumb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		thumb.tooltip_text = "Map: %s — %s" % [
+			String(preset.get("display_name", "Verdant Verge")),
+			String(preset.get("subtitle", "Reach frontier")),
+		]
+		row.add_child(thumb)
 
 	var map_chip := UIFactory.icon_value(&"map", String(preset.get("display_name", "Verdant Verge")), UIPalette.mint, 12)
 	map_chip.tooltip_text = "Map: %s — %s" % [
@@ -165,6 +189,20 @@ func _build_remembered_line() -> HBoxContainer:
 		String(preset.get("subtitle", "Reach frontier")),
 	]
 	row.add_child(map_chip)
+
+	var planet := ContentDB.get_planet(StringName(preset.get("planet_id", &"")))
+	if not planet.is_empty():
+		var planet_medallion := UIFactory.medallion(
+			_safe_icon(StringName(planet.get("icon", &"planet")), &"planet"),
+			24,
+			planet.get("color", UIPalette.violet)
+		)
+		planet_medallion.tooltip_text = "Planet: %s — %s" % [
+			String(planet.get("display_name", "Planet")),
+			String(planet.get("subtitle", "")),
+		]
+		row.add_child(planet_medallion)
+		row.add_child(UIFactory.label(String(planet.get("display_name", "Planet")), "Micro", UIPalette.muted))
 
 	var difficulty_chip := UIFactory.icon_value(
 		StringName(difficulty.get("icon", &"shield")),
@@ -175,17 +213,23 @@ func _build_remembered_line() -> HBoxContainer:
 	difficulty_chip.tooltip_text = String(difficulty.get("description", "Difficulty sets enemy density, elites and rewards."))
 	row.add_child(difficulty_chip)
 
-	var quick := mode == &"quick"
-	var mode_icon: StringName = &"bolt" if quick else &"timer"
+	var clock := ContentDB.get_mode_clock(mode)
+	if clock.is_empty():
+		clock = String(mode_data.get("clock", "18:00"))
+	var mode_name := _mode_label(mode_data)
+	var scale := float(mode_data.get("time_scale", 1.0))
+	var mode_text := "%s · %s" % [mode_name, clock]
+	if scale > 1.0:
+		mode_text += " · ×%.0f" % scale
 	var mode_chip := UIFactory.icon_value(
-		mode_icon,
-		"%s · %s" % ["QUICK ×2" if quick else "NORMAL", "09:00" if quick else "18:00"],
-		UIPalette.amber if quick else UIPalette.muted,
+		_safe_icon(StringName(mode_data.get("icon", &"timer")), &"timer"),
+		mode_text,
+		mode_data.get("color", UIPalette.muted),
 		12
 	)
 	mode_chip.tooltip_text = "Mode: %s. %s" % [
-		"Quick — the run clock is twice as fast." if quick else "Normal — standard 18 minute run clock.",
-		"Remembered from your last drop.",
+		mode_name,
+		String(mode_data.get("description", "Remembered from your last drop.")),
 	]
 	row.add_child(mode_chip)
 	return row
@@ -194,13 +238,17 @@ func _build_remembered_line() -> HBoxContainer:
 func _quick_deploy_tooltip() -> String:
 	var difficulty := _remembered_difficulty()
 	var preset := _remembered_preset(difficulty)
-	var quick := _remembered_mode() == &"quick"
-	return "Quick Deploy — opens the preflight with your remembered drop: %s · %s (T%d) · %s (%s)." % [
+	var mode := _remembered_mode()
+	var mode_data := ContentDB.get_game_mode(mode)
+	var clock := ContentDB.get_mode_clock(mode)
+	if clock.is_empty():
+		clock = String(mode_data.get("clock", "18:00"))
+	return "Quick Deploy — opens the preflight with your remembered drop: %s · %s (T%d) · %s (%s clock)." % [
 		String(preset.get("display_name", "Verdant Verge")),
 		String(difficulty.get("display_name", "Patrol")),
 		int(difficulty.get("threat", 1)),
-		"Quick ×2" if quick else "Normal",
-		"09:00 clock" if quick else "18:00 clock",
+		_mode_label(mode_data),
+		clock,
 	]
 
 
@@ -213,7 +261,9 @@ func _remembered_difficulty() -> Dictionary:
 
 
 func _remembered_preset(difficulty: Dictionary) -> Dictionary:
-	var preset := ContentDB.get_map_preset(StringName(difficulty.get("map_preset", &"")))
+	var preset := ContentDB.get_map_preset(ProfileState.get_last_map())
+	if preset.is_empty():
+		preset = ContentDB.get_map_preset(StringName(difficulty.get("map_preset", &"")))
 	if preset.is_empty() and RunState.active:
 		preset = ContentDB.get_map_preset(RunState.get_map_preset_id())
 	if preset.is_empty():
@@ -224,7 +274,21 @@ func _remembered_preset(difficulty: Dictionary) -> Dictionary:
 
 func _remembered_mode() -> StringName:
 	var mode := ProfileState.get_last_mode()
-	return mode if mode in [&"normal", &"quick"] else &"normal"
+	if ContentDB.get_game_mode(mode).is_empty():
+		var modes := ContentDB.get_game_modes()
+		return StringName(modes[0].get("id", &"normal")) if not modes.is_empty() else &"normal"
+	return mode
+
+
+func _mode_label(mode: Dictionary) -> String:
+	var out := String(mode.get("display_name", mode.get("name", ""))).strip_edges()
+	return out if not out.is_empty() else "Normal"
+
+
+func _safe_icon(icon_name: StringName, fallback: StringName) -> StringName:
+	if UIIcons.has_icon(icon_name):
+		return icon_name
+	return fallback if UIIcons.has_icon(fallback) else &"bolt"
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +408,8 @@ func _build_status_column() -> VBoxContainer:
 	status.add_child(UIFactory.label("● UPLINK STABLE", "Micro", UIPalette.mint))
 	box.add_child(status)
 
-	var build := UIFactory.label("RIFTWARD build 0.1 · Godot 4.7 · Frontier Ops", "Micro", UIPalette.muted_dim)
+	var version := String(ProjectSettings.get_setting("application/config/version", "0.0"))
+	var build := UIFactory.label("RIFTWARD v%s · Godot 4.7 · Frontier Ops" % version, "Micro", UIPalette.muted_dim)
 	build.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	box.add_child(build)
 	return box

@@ -60,26 +60,39 @@ bring home rebuilds Waystation Kestrel — and what you lose stays lost.
 
 ## The loop
 
-Deploy with a loadout you can afford to lose. Complete contracts, chase side caches and bounties,
-survive the shifting storm, and call extraction. Extraction takes time and holds you in the open,
-so every run ends with the same question: one more cache, or get out?
+Deploy with a loadout you can afford to lose. Choose a planet, map and one of five modes — Normal,
+Quick (2x clock), Blackout (night insertion), Gauntlet (early Collapse) or Onslaught (elite surge) —
+then complete contracts, chase side caches and bounties, survive the shifting storm, and call
+extraction. Extraction takes time and holds you in the open, so every run ends with the same question:
+one more cache, or get out?
 
 ## What's in the build
 
-- **A real frontier** — seeded 1.8 km x 1.8 km terrain, three blended biomes, 16–20 points of
-  interest, roads, landmark structures and thousands of scattered props. Four map moods across four
-  difficulty presets.
-- **Expressive combat** — 10 weapons across four slots (two primaries, sidearm, issued knife), ADS with
-  per-weapon sights and a DMR/rail scope, abilities, ultimates, grenades and melee.
-- **Three factions, 23 hostiles** — 14 archetypes, 6 elites with affixes and 3 bosses with phases.
+- **A real frontier** — seeded 1.8 km x 1.8 km terrain, five planets and twelve maps, eighteen weather
+  states and a day/night cycle, 17–21 points of interest, roads, landmark structures, enterable
+  interiors and thousands of scattered props.
+- **Five ways to drop** — Normal, Quick, Blackout, Gauntlet and Onslaught modes with different clocks,
+  storm timings, density, elite odds, rewards and loot.
+- **Expressive combat** — 16 weapons across four slots (two primaries, sidearm, issued knife), ADS with
+  per-weapon sights and a DMR/rail scope, 24 abilities, 4 ultimates, grenades and melee.
+- **Three factions, 37 hostiles** — 20 archetypes, 11 elites with affixes and 6 bosses with phases.
   Enemies use sight, cover, strafing and telegraphed attacks.
-- **Progression that persists** — Warden levels 1–30, four disciplines, 16 passive perks, 12 run-only
-  Rift Mods, gear with rarities and affixes, cosmetics.
+- **Under the Reach** — three themed dungeons with procedural rooms, a guardian and loot; water and lava
+  hazards on every map.
+- **Progression that persists** — Warden levels 1–30, four disciplines, 24 passive perks, 12 run-only
+  Rift Mods, gear with rarities and affixes, cosmetics, and save format v5.
 - **A squad** — recruit four Warden AI companions (medic, heavy, scout, engineer), two active at once,
   plus three Driftling pets, each with commands and abilities.
-- **A home that grows** — eight outpost modules with three tiers each, gated by power and Nexus level.
-- **Every run is different** — seeded layouts, contracts, loot, mutators and 12 world events, with
-  late-run pressure events that force the ending.
+- **A home that grows** — eight outpost modules with three tiers each on a persistent 8x8 bay (layout
+  v2), gated by power and Nexus level, rendered as a clickable isometric diorama.
+- **Image-first interface** — Loadout/Locker weapon and gear art, Warden and Driftling portraits,
+  discipline medallions, planet portraits and map thumbnails, a Weather/Operations codex, a Reach
+  Event HUD banner and full display settings (window mode, resolution, render scale, AA, frame cap,
+  quality preset).
+- **Every run is different** — seeded layouts, 13 contracts, loot, mutators and 20 world events (three
+  per run), with late-run pressure events that force the ending.
+- **First drop** — a five-stage Field Training run teaches movement, combat, abilities, looting and
+  extraction before the Reach is allowed to kill you.
 
 ## Controls
 
@@ -140,5 +153,5 @@ No payment — free download, donations optional
 ## Version to display
 
 ```
-0.1.0
+0.2.0
 ```

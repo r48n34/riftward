@@ -11,6 +11,7 @@ var _run_stats: HBoxContainer = null
 var _abandon_button: Button = null
 var _abandon_armed := false
 var _resume_button: Button = null
+var _skip_training_button: Button = null
 
 
 func _ready() -> void:
@@ -75,6 +76,12 @@ func _build() -> void:
 	_abandon_button.pressed.connect(_on_abandon)
 	buttons.add_child(_abandon_button)
 
+	_skip_training_button = UIFactory.secondary_button("Skip Training", &"training")
+	_skip_training_button.tooltip_text = "Finish onboarding immediately. Field Training can be replayed from the main menu."
+	_skip_training_button.visible = false
+	_skip_training_button.pressed.connect(_on_skip_training)
+	buttons.add_child(_skip_training_button)
+
 	var menu_button := UIFactory.ghost_button("Quit", &"home")
 	menu_button.tooltip_text = "Leave the run and return to the main menu."
 	menu_button.pressed.connect(_on_quit_to_menu)
@@ -95,12 +102,20 @@ func present() -> void:
 	_abandon_armed = false
 	if _abandon_button != null:
 		_abandon_button.text = "Abandon"
+	if _skip_training_button != null:
+		_skip_training_button.visible = RunState.is_tutorial()
 	_menu_box.visible = true
 	_settings_host.visible = false
 	_refresh()
 	if _resume_button != null:
 		_resume_button.focus_mode = Control.FOCUS_ALL
 		_resume_button.grab_focus()
+
+
+func _on_skip_training() -> void:
+	if App != null:
+		App.skip_tutorial()
+	dismiss()
 
 
 func dismiss() -> void:

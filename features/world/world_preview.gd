@@ -1,4 +1,4 @@
-﻿extends Node3D
+extends Node3D
 ## WORLD PREVIEW ??standalone windowed viewer for the procedural frontier.
 ##
 ## Controls: click to capture mouse, WASD + Q/E fly, Shift = fast, F12 = save
@@ -24,11 +24,21 @@ var _generated := false
 
 
 func _ready() -> void:
-	_capture = auto_capture or OS.get_cmdline_user_args().has("--capture")
+	var args := OS.get_cmdline_user_args()
+	_capture = auto_capture or args.has("--capture")
+	var preset_id: StringName = &""
+	for i in args.size():
+		if String(args[i]) == "--preset" and i + 1 < args.size():
+			preset_id = StringName(String(args[i + 1]))
 	_build_view()
 	_world = WorldBuilderScript.new()
 	_world.name = "World"
 	add_child(_world)
+	if preset_id != &"" and ContentDB != null:
+		var preset: Dictionary = ContentDB.get_map_preset(preset_id)
+		if not preset.is_empty():
+			_world.apply_preset(preset)
+			capture_dir = "%s/%s" % [capture_dir, String(preset_id)]
 	_world.generation_progress.connect(_on_progress)
 	_world.generation_finished.connect(_on_generation_finished)
 	await _world.generate(world_seed)
@@ -37,7 +47,7 @@ func _ready() -> void:
 	if _capture:
 		await _capture_shots()
 	else:
-		_hud.text = "RIFTWARD ??world preview\nLMB capture mouse  ?? WASD/QE fly  ?? Shift fast  ?? F12 screenshot  ?? Esc release"
+		_hud.text = "RIFTWARD — world preview\nLMB capture mouse · WASD/QE fly · Shift fast · F12 screenshot · Esc release"
 		print("[world-preview] ready. WASD/QE fly, F12 screenshot.")
 
 
@@ -189,5 +199,24 @@ func _vantage_points() -> Array[Dictionary]:
 	# Sky/planet study shot.
 	var sky_center := Vector3(0.0, 30.0, 0.0)
 	out.append({"name": "planet_sky", "pos": sky_center + Vector3(0.0, 60.0, 0.0), "look": sky_center + Vector3(0.38, 0.44, -0.81) * 900.0})
+	# Fluid basin study (water or lava).
+	var basins: Array = _world.get_fluid_basins()
+	if not basins.is_empty():
+		var basin: Dictionary = basins[0]
+		var bc: Vector2 = basin.get("center", Vector2.ZERO)
+		var level := float(basin.get("level", 0.0))
+		out.append({
+			"name": "fluid_basin",
+			"pos": Vector3(bc.x + 46.0, level + 22.0, bc.y + 56.0),
+			"look": Vector3(bc.x, level, bc.y),
+		})
+	# Interior study: stand inside the first enterable POI.
+	var interiors: Array = _world.get_interior_pois()
+	if not interiors.is_empty():
+		var interior_poi: Dictionary = interiors[0]
+		var spawns_inside: Array = (interior_poi.get("interior", {}) as Dictionary).get("spawns", [])
+		if not spawns_inside.is_empty():
+			var inside: Vector3 = spawns_inside[0]
+			out.append({"name": "interior", "pos": inside + Vector3(0.0, 1.7, 0.0), "look": inside + Vector3(4.0, 1.2, -4.0)})
 	return out
 

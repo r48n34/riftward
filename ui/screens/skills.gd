@@ -78,7 +78,7 @@ func _build_ability_column() -> VBoxContainer:
 	var row := UIFactory.hbox(UIPalette.SP4)
 	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var loadout_card := UIFactory.panel("CardInset")
-	loadout_card.custom_minimum_size.x = 232
+	loadout_card.custom_minimum_size.x = 244
 	_loadout_host = UIFactory.vbox(UIPalette.SP3)
 	loadout_card.add_child(_loadout_host)
 	row.add_child(loadout_card)
@@ -190,9 +190,12 @@ func _build_mechanics() -> void:
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.tooltip_text = String(mechanic.get("description", ""))
 		var box := UIFactory.hbox(UIPalette.SP2)
-		var glyph := UIFactory.icon_or_null(_icon_for(StringName(mechanic.get("icon", &"bolt"))), 15, UIPalette.mint if unlocked else UIPalette.muted_dim)
-		if glyph != null:
-			box.add_child(glyph)
+		box.add_child(UIFactory.medallion(
+			_icon_for(StringName(mechanic.get("icon", &"bolt"))),
+			20,
+			UIPalette.mint if unlocked else UIPalette.muted_dim,
+			0.5
+		))
 		var name_label := UIFactory.label(String(mechanic.get("name", "Mechanic")), "BodySmall", UIPalette.ivory if unlocked else UIPalette.muted_dim)
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		box.add_child(name_label)
@@ -224,31 +227,81 @@ func _build_disciplines() -> void:
 		var discipline_id: StringName = entry.id
 		var selected := discipline_id == current
 		var accent := UIPalette.discipline_color(discipline_id)
+		var ultimate := ContentDB.get_ultimate_for_discipline(discipline_id)
 		var card := UIFactory.card_button(true)
 		card.button_group = group
 		card.button_pressed = selected
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card.custom_minimum_size = Vector2(0, 84)
-		card.tooltip_text = String(entry.blurb)
+		card.custom_minimum_size = Vector2(0, 116)
+		card.tooltip_text = _discipline_tooltip(entry, ultimate)
 		card.pressed.connect(func() -> void: _set_discipline(discipline_id))
 		var content := UIFactory.card_content(card)
 		if content == null:
 			continue
-		var box := UIFactory.vbox(UIPalette.SP1)
-		var head := UIFactory.hbox(UIPalette.SP2)
-		var glyph := UIFactory.icon_or_null(StringName(entry.icon), 18, accent)
-		if glyph != null:
-			glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			head.add_child(glyph)
-		var name_label := UIFactory.display_text(String(entry.name).to_upper(), 17, 650, accent)
+		_set_content_margins(content, 14, 10, 14, 10)
+		var box := UIFactory.vbox(6)
+		var head := UIFactory.hbox(UIPalette.SP3)
+		head.add_child(UIFactory.medallion(StringName(entry.icon), 46, accent, 0.55))
+		var text := UIFactory.vbox(3)
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var name_row := UIFactory.hbox(UIPalette.SP2)
+		var name_label := UIFactory.display_text(String(entry.name).to_upper(), 18, 650, accent)
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		head.add_child(name_label)
+		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_row.add_child(name_label)
 		if selected:
-			head.add_child(UIFactory.icon(&"check", 15, accent))
+			name_row.add_child(UIFactory.icon(&"check", 15, accent))
+		text.add_child(name_row)
+		var ultimate_row := UIFactory.hbox(UIPalette.SP2)
+		if ultimate != null:
+			var ultimate_glyph := UIFactory.icon(UIIcons.ability_icon(ultimate.icon), 14, accent)
+			ultimate_glyph.tooltip_text = ultimate.display_name
+			ultimate_row.add_child(ultimate_glyph)
+			ultimate_row.add_child(UIFactory.label(ultimate.display_name, "Micro", UIPalette.muted))
+			var cooldown := UIFactory.icon_value(&"timer", "%.0fs" % ultimate.cooldown, UIPalette.muted, 11)
+			cooldown.tooltip_text = "Ultimate cooldown"
+			ultimate_row.add_child(cooldown)
+		else:
+			ultimate_row.add_child(UIFactory.label("No signature ultimate", "Micro", UIPalette.muted_dim))
+		text.add_child(ultimate_row)
+		head.add_child(text)
 		box.add_child(head)
+		var footer := UIFactory.hbox(UIPalette.SP2)
+		footer.add_child(_discipline_pips(discipline_id, accent))
+		footer.add_child(UIFactory.spacer_h())
+		box.add_child(footer)
 		content.add_child(box)
 		UIFactory.passive_tree(content)
 		_discipline_host.add_child(card)
+
+
+func _discipline_tooltip(entry: Dictionary, ultimate: AbilityData) -> String:
+	var lines: PackedStringArray = [String(entry.name), String(entry.blurb)]
+	if ultimate != null:
+		lines.append("Ultimate: %s (%d s)" % [ultimate.display_name, int(ultimate.cooldown)])
+		if not ultimate.description.is_empty():
+			lines.append(ultimate.description)
+	lines.append("Selecting a discipline changes your ultimate and starting ability loadout.")
+	return "\n".join(lines)
+
+
+func _discipline_pips(discipline_id: StringName, accent: Color) -> HBoxContainer:
+	var perks: Array[PerkData] = ContentDB.get_perks_for_discipline(discipline_id)
+	var owned := ProfileState.get_skill_ranks()
+	var count := 0
+	for perk in perks:
+		if owned.has(String(perk.id)):
+			count += 1
+	var pips := UIFactory.pips(count, maxi(perks.size(), 1), accent, 6)
+	pips.tooltip_text = "%d / %d %s perks acquired" % [count, perks.size(), String(discipline_id).capitalize()]
+	return pips
+
+
+func _discipline_icon(discipline: StringName) -> StringName:
+	for entry in DISCIPLINES:
+		if entry.id == discipline:
+			return StringName(entry.icon)
+	return &"shield"
 
 
 func _build_attributes() -> void:
@@ -257,19 +310,25 @@ func _build_attributes() -> void:
 	var points := ProfileState.get_attribute_points()
 	for entry in ATTRIBUTES:
 		var attr_id: StringName = entry.id
+		var value_int := int(attributes.get(String(attr_id), 1))
 		var row := UIFactory.hbox(UIPalette.SP3)
 		row.tooltip_text = String(entry.blurb)
-		var glyph := UIFactory.icon_or_null(StringName(entry.icon), 18, UIPalette.mint)
-		if glyph != null:
-			glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			row.add_child(glyph)
+		row.add_child(UIFactory.medallion(StringName(entry.icon), 28, UIPalette.mint, 0.5))
+		var text := UIFactory.vbox(4)
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var head := UIFactory.hbox(UIPalette.SP2)
 		var name_label := UIFactory.label(String(entry.name), "TitleLabel")
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(name_label)
-		var value := UIFactory.number_text(str(int(attributes.get(String(attr_id), 1))), 22, UIPalette.ivory)
-		value.custom_minimum_size.x = 44
+		head.add_child(name_label)
+		var value := UIFactory.number_text(str(value_int), 20, UIPalette.ivory)
+		value.custom_minimum_size.x = 38
 		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		row.add_child(value)
+		head.add_child(value)
+		text.add_child(head)
+		var rank_bar := UIFactory.progress(value_int, 30.0, "BarMint", 5)
+		rank_bar.tooltip_text = "Attribute rank %d / 30" % value_int
+		text.add_child(rank_bar)
+		row.add_child(text)
 		var plus := UIFactory.icon_button(&"plus", "Spend an attribute point on %s." % String(entry.name), "SecondaryButton", 34)
 		plus.disabled = points <= 0
 		plus.add_theme_color_override("icon_normal_color", UIPalette.mint)
@@ -310,12 +369,16 @@ func _build_loadout() -> void:
 			"panel",
 			UITheme._box(UIPalette.alpha(ultimate.color, 0.08), UIPalette.alpha(ultimate.color, 0.45), UIPalette.R_MD, 1, Vector4(12, 9, 12, 9))
 		)
-		ult_card.tooltip_text = "Bound to your discipline"
-		var ult_box := UIFactory.vbox(2)
-		var ult_row := UIFactory.hbox(UIPalette.SP2)
-		ult_row.add_child(UIFactory.icon(UIIcons.ability_icon(ultimate.icon), 15, ultimate.color))
-		ult_row.add_child(UIFactory.label(ultimate.display_name, "TitleLabel", ultimate.color))
-		ult_box.add_child(ult_row)
+		ult_card.tooltip_text = "%s\n%s\nBound to your discipline." % [ultimate.display_name, ultimate.description]
+		var ult_box := UIFactory.hbox(UIPalette.SP3)
+		ult_box.add_child(UIFactory.medallion(UIIcons.ability_icon(ultimate.icon), 40, ultimate.color, 0.55))
+		var ult_text := UIFactory.vbox(2)
+		ult_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ult_text.add_child(UIFactory.label(ultimate.display_name, "TitleLabel", ultimate.color))
+		var ult_cooldown := UIFactory.icon_value(&"timer", "%.0fs" % ultimate.cooldown, UIPalette.muted, 11)
+		ult_cooldown.tooltip_text = "Ultimate cooldown"
+		ult_text.add_child(ult_cooldown)
+		ult_box.add_child(ult_text)
 		ult_card.add_child(ult_box)
 		_loadout_host.add_child(ult_card)
 	else:
@@ -327,17 +390,25 @@ func _loadout_slot(ability: AbilityData, index: int) -> PanelContainer:
 	if ability == null:
 		card.add_child(UIFactory.empty_state(&"plus", "Empty", "Assign from the pool."))
 		return card
-	var box := UIFactory.vbox(5)
-	var head := UIFactory.hbox(UIPalette.SP2)
-	head.add_child(UIFactory.icon(UIIcons.ability_icon(ability.icon), 16, ability.color))
-	head.add_child(UIFactory.label(ability.display_name, "TitleLabel", ability.color))
+	var box := UIFactory.vbox(4)
+	var head := UIFactory.hbox(UIPalette.SP3)
+	head.add_child(UIFactory.medallion(UIIcons.ability_icon(ability.icon), 44, ability.color, 0.55))
+	var name_label := UIFactory.label(ability.display_name, "TitleLabel", ability.color)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	head.add_child(name_label)
 	box.add_child(head)
+	var footer := UIFactory.hbox(UIPalette.SP2)
 	var cd_row := UIFactory.icon_value(&"timer", "%.0fs" % ability.cooldown, UIPalette.muted, 12)
 	cd_row.tooltip_text = "Cooldown"
-	box.add_child(cd_row)
-	var remove := UIFactory.inline_button("Remove", &"close")
+	footer.add_child(cd_row)
+	footer.add_child(UIFactory.spacer_h())
+	var remove := UIFactory.ghost_button("Remove", &"close")
+	remove.custom_minimum_size = Vector2(0, 26)
+	remove.tooltip_text = "Remove %s from ability slot %d." % [ability.display_name, index + 1]
 	remove.pressed.connect(func() -> void: _remove_ability(index))
-	box.add_child(remove)
+	footer.add_child(remove)
+	box.add_child(footer)
 	card.add_child(box)
 	return card
 
@@ -356,9 +427,12 @@ func _build_abilities() -> void:
 		var row := UIFactory.panel("RowPanel")
 		row.tooltip_text = ability.description
 		var box := UIFactory.hbox(UIPalette.SP3)
-		var glyph := UIFactory.icon(UIIcons.ability_icon(ability.icon), 18, ability.color if unlocked else UIPalette.muted_dim)
-		glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		box.add_child(glyph)
+		box.add_child(UIFactory.medallion(
+			UIIcons.ability_icon(ability.icon),
+			34,
+			ability.color if unlocked else UIPalette.muted_dim,
+			0.5
+		))
 		var text := UIFactory.vbox(2)
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var name_row := UIFactory.hbox(UIPalette.SP2)
@@ -372,7 +446,7 @@ func _build_abilities() -> void:
 		var cd_row := UIFactory.icon_value(&"timer", "%.0fs" % ability.cooldown, UIPalette.muted, 11)
 		cd_row.tooltip_text = "Cooldown"
 		meta_row.add_child(cd_row)
-		var discipline_row := UIFactory.icon_value(&"shield", String(ability.discipline).capitalize(), UIPalette.muted, 11)
+		var discipline_row := UIFactory.icon_value(_discipline_icon(ability.discipline), String(ability.discipline).capitalize(), UIPalette.muted, 11)
 		discipline_row.tooltip_text = "Discipline"
 		meta_row.add_child(discipline_row)
 		if not unlocked:
@@ -383,13 +457,15 @@ func _build_abilities() -> void:
 		box.add_child(text)
 		if unlocked:
 			if slot_index >= 0:
-				var remove := UIFactory.ghost_button("Remove")
+				var remove := UIFactory.ghost_button("Remove", &"close")
 				remove.custom_minimum_size = Vector2(0, 30)
+				remove.tooltip_text = "Remove %s from ability slot %d." % [ability.display_name, slot_index + 1]
 				remove.pressed.connect(func() -> void: _remove_ability(slot_index))
 				box.add_child(remove)
 			else:
-				var assign := UIFactory.secondary_button("Assign")
+				var assign := UIFactory.secondary_button("Assign", &"plus")
 				assign.custom_minimum_size = Vector2(0, 30)
+				assign.tooltip_text = "Assign %s to the next ability slot." % ability.display_name
 				assign.pressed.connect(func() -> void: _assign_ability(ability.id))
 				box.add_child(assign)
 		else:
@@ -434,16 +510,22 @@ func _build_perks() -> void:
 		box.add_child(tier_row)
 
 		var name_row := UIFactory.hbox(UIPalette.SP2)
-		var perk_glyph := UIFactory.icon_or_null(UIIcons.ability_icon(perk.icon), 15, perk.color if is_owned else UIPalette.muted_dim)
-		if perk_glyph != null:
-			perk_glyph.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			name_row.add_child(perk_glyph)
-		name_row.add_child(UIFactory.label(perk.display_name, "TitleLabel", ivory_or(perk.color, is_owned)))
-		name_row.add_child(UIFactory.spacer_h())
+		name_row.add_child(UIFactory.medallion(
+			UIIcons.ability_icon(perk.icon),
+			30,
+			perk.color if is_owned else UIPalette.muted_dim,
+			0.5
+		))
+		var perk_name := UIFactory.label(perk.display_name, "TitleLabel", ivory_or(perk.color, is_owned))
+		perk_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		perk_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		name_row.add_child(perk_name)
 		if is_owned:
 			name_row.add_child(UIFactory.icon(&"check", 15, UIPalette.mint))
 		box.add_child(name_row)
-		box.add_child(UIFactory.label(UIPalette.format_stat_value(perk.stat, perk.value), "MonoSmall", perk.color))
+		var stat_chip := UIFactory.chip(UIPalette.format_stat_value(perk.stat, perk.value), perk.color)
+		stat_chip.tooltip_text = "Perk effect: %s" % perk.display_name
+		box.add_child(stat_chip)
 
 		if is_owned:
 			pass
@@ -477,6 +559,13 @@ func _build_perks() -> void:
 
 func ivory_or(color: Color, owned: bool) -> Color:
 	return color if owned else UIPalette.muted
+
+
+func _set_content_margins(content: MarginContainer, left: int, top: int, right: int, bottom: int) -> void:
+	content.add_theme_constant_override("margin_left", left)
+	content.add_theme_constant_override("margin_top", top)
+	content.add_theme_constant_override("margin_right", right)
+	content.add_theme_constant_override("margin_bottom", bottom)
 
 
 # ---------------------------------------------------------------------------

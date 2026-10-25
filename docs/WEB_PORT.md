@@ -57,7 +57,7 @@ On the web there are only two options, and both cost something:
 
 ### 3. Performance headroom
 
-The frontier is 64 terrain chunks, 16–20 POIs, 16–22 roadside builds and **5,000–9,000 MultiMesh scatter
+The frontier is 64 terrain chunks, 17–21 POIs, 16–22 roadside builds and **5,000–9,000 MultiMesh scatter
 instances**, rendered in Forward+ on a discrete GPU. WebGL 2's draw-call and shader budgets are far
 below that. A browser build needs a `web` feature-tag branch that cuts scatter density, shadow range,
 view distance and post-processing — i.e. the game stops matching its own screenshots.

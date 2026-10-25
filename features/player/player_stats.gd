@@ -34,6 +34,8 @@ static func base_from_attributes(attributes: Dictionary) -> Dictionary:
 		StatKeys.SHIELD_REGEN_DELAY: 4.0,
 		StatKeys.ABILITY_RANGE: 1.0,
 		StatKeys.PET_POWER: 1.0,
+		StatKeys.HAZARD_RESIST: 0.0,
+		StatKeys.SWIM_SPEED: 1.0,
 	}
 
 

@@ -103,6 +103,12 @@ var _ally_scan_timer: float = 0.0
 var _target_refresh_timer: float = 0.0
 var _nav_probe_timer: float = 0.0
 var _nav_available: bool = false
+var _world_ref: Node = null
+var _hazard_timer: float = 0.0
+var _weather_timer: float = 0.0
+var _weather_vision_mult: float = 1.0
+var _fluid_slow: float = 1.0
+var _blinded_timer: float = 0.0
 
 var _state_timer: float = 0.0
 var _attack_timer: float = 0.0
@@ -620,6 +626,15 @@ func _tick_timers(delta: float) -> void:
 	_cover_timer = maxf(0.0, _cover_timer - delta)
 	_marked_timer = maxf(0.0, _marked_timer - delta)
 	_slow_timer = maxf(0.0, _slow_timer - delta)
+	_blinded_timer = maxf(0.0, _blinded_timer - delta)
+	_hazard_timer -= delta
+	if _hazard_timer <= 0.0:
+		_hazard_timer = 1.0
+		_update_environment()
+	_weather_timer -= delta
+	if _weather_timer <= 0.0:
+		_weather_timer = 2.0
+		_weather_vision_mult = _resolve_weather_vision()
 	_strafe_timer -= delta
 	if _strafe_timer <= 0.0:
 		_strafe_timer = _rng.randf_range(1.2, 2.6)
@@ -786,11 +801,14 @@ func _read_bool_member(node: Node, member_name: String) -> bool:
 func _can_see(node: Node3D, max_range: float) -> bool:
 	if node == null or not is_instance_valid(node) or not is_inside_tree():
 		return false
+	var effective_range := max_range * _weather_vision_mult
+	if _blinded_timer > 0.0:
+		effective_range = minf(effective_range, 6.0)
 	var eye := _eye_position()
 	var target_position: Vector3 = node.global_position + Vector3.UP * 1.1
 	var to_target := target_position - eye
 	var distance := to_target.length()
-	if distance > max_range or distance < 0.05:
+	if distance > effective_range or distance < 0.05:
 		return false
 	if distance > 6.5:
 		var forward := -global_transform.basis.z
@@ -1372,12 +1390,53 @@ func _probe_navigation() -> void:
 
 
 func _current_speed_scale() -> float:
-	var scale := _move_speed_scale
+	var scale := _move_speed_scale * _fluid_slow
 	if _slow_timer > 0.0:
 		scale *= 0.55
 	if _pull_time > 0.0:
 		scale *= 0.45
 	return scale
+
+
+## Lava damage and water drag. Called at 1 Hz; the world query is analytic so no
+## physics volumes or per-frame Area2D checks are needed.
+func _update_environment() -> void:
+	if _world_ref == null or not is_instance_valid(_world_ref):
+		_world_ref = get_tree().get_first_node_in_group("world")
+	_fluid_slow = 1.0
+	if _world_ref == null or not _world_ref.has_method("sample_fluid"):
+		return
+	var fluid: Dictionary = _world_ref.call("sample_fluid", Vector2(global_position.x, global_position.z))
+	var fluid_type := int(fluid.get("type", 0))
+	if fluid_type == 0:
+		return
+	var level := float(fluid.get("level", 0.0))
+	if global_position.y >= level - 0.2:
+		return
+	if fluid_type == 2:
+		_fluid_slow = 0.5
+		_apply_dot(8.0 + float(threat_level) * 1.5)
+	else:
+		_fluid_slow = 0.65
+
+
+func _resolve_weather_vision() -> float:
+	var weather := get_tree().get_first_node_in_group("weather")
+	if weather != null and weather.has_method("get_vision_multiplier"):
+		return clampf(float(weather.call("get_vision_multiplier")), 0.3, 1.2)
+	return 1.0
+
+
+func set_blinded(duration: float) -> void:
+	_blinded_timer = maxf(_blinded_timer, maxf(0.0, duration))
+
+
+func is_blinded() -> bool:
+	return _blinded_timer > 0.0
+
+
+func get_weather_vision_multiplier() -> float:
+	return _weather_vision_mult
 
 
 func _face_towards(direction: Vector3, delta: float, speed: float) -> void:

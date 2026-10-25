@@ -41,6 +41,7 @@ func build(scatter_root: Node3D, builder: Node, materials: Dictionary, world_see
 	_scatter_shards(density)
 	_scatter_spires(density)
 	_scatter_arches(density)
+	_scatter_shore(density)
 	_scatter_path_pylons()
 
 	# One merged collision body for every collidable scatter prop.
@@ -204,7 +205,8 @@ func _add_tree_instance(xforms: Array[Transform3D], colors: Array[Color], sample
 	var basis := Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s * _rng.randf_range(0.8, 1.3), s))
 	xforms.append(Transform3D(basis, Vector3(pos.x, h - 0.15, pos.y)))
 	var tint := _rng.randf_range(0.72, 1.12)
-	colors.append(Color(tint * 0.82, tint, tint * 0.88))
+	var col := Color(tint * 0.82, tint, tint * 0.88)
+	colors.append(Palette.apply_planet_tint(col, sample.get("weights", Vector3(1, 0, 0)), _builder.get_planet_palette()))
 
 
 func _build_coral_tree(kit: MeshKit) -> void:
@@ -283,7 +285,8 @@ func _add_grass_instance(xforms: Array[Transform3D], colors: Array[Color], sampl
 	var basis := Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s * _rng.randf_range(0.8, 1.8), s))
 	xforms.append(Transform3D(basis, Vector3(pos.x, h - 0.05, pos.y)))
 	var c := Color(0.52, 0.88, 0.72).lerp(Color(0.86, 0.92, 0.70), _rng.randf() * 0.45)
-	colors.append(c.darkened(_rng.randf() * 0.22))
+	c = c.darkened(_rng.randf() * 0.22)
+	colors.append(Palette.apply_planet_tint(c, sample.get("weights", Vector3(1, 0, 0)), _builder.get_planet_palette()))
 
 
 func _scatter_spores(density: float) -> void:
@@ -333,6 +336,56 @@ func _scatter_shards(density: float) -> void:
 		xforms.append(Transform3D(basis, Vector3(pos.x, h - 0.12, pos.y)))
 		colors.append(Color(0.84, 0.94, 1.0).lerp(Color(0.62, 0.84, 0.88), _rng.randf()))
 	_commit(mesh, xforms, colors, "GlassShards", true)
+
+
+# =============================================================================
+# Shore dressing: reeds on water, ember vents on lava
+# =============================================================================
+func _scatter_shore(density: float) -> void:
+	var basins: Array = _builder.get_fluid_basins()
+	if basins.is_empty():
+		return
+	var reed_kit := MeshKit.new()
+	reed_kit.set_materials(_materials)
+	for blade in 3:
+		var ang := TAU * float(blade) / 3.0 + 0.4
+		reed_kit.cylinder(0.02, 0.06, _rng.randf_range(0.9, 1.5), 4, Vector3(cos(ang) * 0.2, 0.6, sin(ang) * 0.2), &"grass", Vector3(cos(ang) * 0.18, ang, sin(ang) * 0.18), false)
+	var reed_mesh := reed_kit.build_mesh()
+	var vent_kit := MeshKit.new()
+	vent_kit.set_materials(_materials)
+	vent_kit.cylinder(0.35, 0.65, 0.55, 6, Vector3(0.0, 0.27, 0.0), &"scorch", Vector3.ZERO, false)
+	vent_kit.cylinder(0.02, 0.32, 0.5, 6, Vector3(0.0, 0.75, 0.0), &"glow_ember", Vector3.ZERO, false)
+	var vent_mesh := vent_kit.build_mesh()
+	var reed_xforms: Array[Transform3D] = []
+	var reed_colors: Array[Color] = []
+	var vent_xforms: Array[Transform3D] = []
+	var vent_colors: Array[Color] = []
+	for basin in basins:
+		if not (basin is Dictionary):
+			continue
+		var center: Vector2 = basin.get("center", Vector2.ZERO)
+		var radius := float(basin.get("radius", 40.0))
+		var fluid_type := int(basin.get("type", 1))
+		var count := int(clampf(radius * 0.55 * density, 8.0, 54.0))
+		for i in count:
+			var ang := _rng.randf() * TAU
+			var dist := radius * _rng.randf_range(0.98, 1.12)
+			var pos := center + Vector2(cos(ang), sin(ang)) * dist
+			var hx: float = _builder.sample_height(pos + Vector2(3.0, 0.0)) - _builder.sample_height(pos - Vector2(3.0, 0.0))
+			var hz: float = _builder.sample_height(pos + Vector2(0.0, 3.0)) - _builder.sample_height(pos - Vector2(0.0, 3.0))
+			if absf(hx) + absf(hz) > 3.0:
+				continue
+			var h: float = _builder.sample_height(pos)
+			var s := _rng.randf_range(0.6, 1.6)
+			var basis := Basis(Vector3.UP, _rng.randf() * TAU).scaled(Vector3(s, s * _rng.randf_range(0.8, 1.4), s))
+			if fluid_type == 2:
+				vent_xforms.append(Transform3D(basis, Vector3(pos.x, h - 0.1, pos.y)))
+				vent_colors.append(Color(1.0, 0.52, 0.22).lerp(Color(1.0, 0.82, 0.42), _rng.randf()))
+			else:
+				reed_xforms.append(Transform3D(basis, Vector3(pos.x, h - 0.05, pos.y)))
+				reed_colors.append(Color(0.42, 0.78, 0.58).lerp(Color(0.82, 0.92, 0.66), _rng.randf()))
+	_commit(reed_mesh, reed_xforms, reed_colors, "ShoreReeds", false)
+	_commit(vent_mesh, vent_xforms, vent_colors, "EmberVents", false)
 
 
 # =============================================================================
@@ -457,6 +510,8 @@ func _pick_point(clear_pad: float, max_tries: int, edge_limit: float) -> Diction
 		var pos := Vector2(x, z)
 		if not _builder.is_scatter_clear(pos, clear_pad):
 			continue
+		if int(_builder.sample_fluid(pos).get("type", 0)) != 0:
+			continue
 		var h: float = _builder.sample_height(pos)
 		# Skip steep ground for props that would float or clip badly.
 		var hx: float = _builder.sample_height(pos + Vector2(3.0, 0.0)) - _builder.sample_height(pos - Vector2(3.0, 0.0))
@@ -477,6 +532,8 @@ func _pick_near(center: Vector2, radius: float, clear_pad: float) -> Dictionary:
 			continue
 		if not _builder.is_scatter_clear(pos, clear_pad):
 			continue
+		if int(_builder.sample_fluid(pos).get("type", 0)) != 0:
+			continue
 		var h: float = _builder.sample_height(pos)
 		return {"pos": pos, "height": h, "weights": _builder.get_biome_weights_at(pos)}
 	return {}
@@ -486,16 +543,18 @@ func _rock_color(weights: Vector3, low: float, high: float) -> Color:
 	var col := ROCK_ASHEN * weights.y + ROCK_VERDANT * weights.x + ROCK_GLASS * weights.z
 	var v := _rng.randf_range(low, high)
 	var warm := _rng.randf_range(-0.05, 0.05)
-	return Color(
+	var out := Color(
 		clampf(col.r * v + warm, 0.0, 1.0),
 		clampf(col.g * v, 0.0, 1.0),
 		clampf(col.b * v - warm * 0.5, 0.0, 1.0)
 	)
+	return Palette.apply_planet_tint(out, weights, _builder.get_planet_palette())
 
 
 func _spire_color(weights: Vector3, low: float, high: float) -> Color:
 	var col := ROCK_ASHEN * weights.y + ROCK_VERDANT * weights.x + ROCK_GLASS * weights.z
-	return col * _rng.randf_range(low, high)
+	var out := col * _rng.randf_range(low, high)
+	return Palette.apply_planet_tint(out, weights, _builder.get_planet_palette())
 
 
 func _rot_from_up(dir: Vector3) -> Vector3:
