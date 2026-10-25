@@ -33,26 +33,31 @@ $console = $godot.Console
 $logDir = Join-Path $PSScriptRoot "artifacts\logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
-$tests = @(
-    @{ Name = "boot"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "240"); Marker = $null; TimeoutMs = 120000 },
-    @{ Name = "shooting"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "4000", "--", "--shoot-smoke"); Marker = "RESULT: PASS"; TimeoutMs = 180000 },
-    @{ Name = "inventory"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "4000", "--", "--inventory-smoke"); Marker = "RESULT: PASS"; TimeoutMs = 180000 },
-    @{ Name = "integration"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "4000", "res://tests/integration_test.tscn"); Marker = "RESULT: PASS"; TimeoutMs = 180000 },
-    @{ Name = "death"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "4000", "res://tests/death_test.tscn"); Marker = "RESULT: PASS"; TimeoutMs = 180000 },
-    @{ Name = "dungeon"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "6000", "res://tests/dungeon_test.tscn"); Marker = "RESULT: PASS"; TimeoutMs = 240000 },
-    @{ Name = "tutorial"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "9000", "res://tests/tutorial_test.tscn"); Marker = "RESULT: PASS"; TimeoutMs = 180000 },
-    @{ Name = "world"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "4000", "res://features/world/world_test.tscn"); Marker = "PASS"; TimeoutMs = 180000 },
-    @{ Name = "world_variants"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "12000", "res://tests/world_variants_test.tscn"); Marker = "RESULT: PASS"; TimeoutMs = 300000 },
-    @{ Name = "ai"; Args = @("--headless", "--path", $projectRoot, "--script", "res://features/ai/ai_test.gd"); Marker = "PASS"; TimeoutMs = 180000 },
-    @{ Name = "companions"; Args = @("--headless", "--path", $projectRoot, "--script", "res://features/companions/companions_test.gd"); Marker = "PASS"; TimeoutMs = 180000 },
-    @{ Name = "progression"; Args = @("--headless", "--path", $projectRoot, "--script", "res://tests/progression_test.gd"); Marker = "RESULT: PASS"; TimeoutMs = 180000 },
-    @{ Name = "ui"; Args = @("--headless", "--path", $projectRoot, "--quit-after", "2400", "res://ui/ui_demo.tscn"); Marker = "RESULT: PASS"; TimeoutMs = 180000 },
-    @{ Name = "ui_icons"; Args = @("--headless", "--path", $projectRoot, "--script", "res://tests/ui_icons_test.gd"); Marker = "RESULT: PASS"; TimeoutMs = 120000 }
-)
+# Suite list lives in tests/suites.json so the local gate and the GitHub Actions
+# workflow (.github/workflows/tests.yml, the README "headless-tests" badge) cannot
+# drift apart. Add a new suite there, not here.
+$manifestPath = Join-Path $PSScriptRoot "suites.json"
+if (-not (Test-Path -LiteralPath $manifestPath)) {
+    throw "Suite manifest not found: $manifestPath"
+}
+$manifest = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
+$tests = @($manifest.suites | ForEach-Object {
+    [pscustomobject]@{
+        Name = [string]$_.name
+        Args = @($_.args | ForEach-Object { [string]$_ })
+        Marker = if ($null -ne $_.marker) { [string]$_.marker } else { $null }
+        TimeoutMs = [int]$_.timeoutSeconds * 1000
+    }
+})
+if ($tests.Count -eq 0) {
+    throw "Suite manifest $manifestPath contains no suites."
+}
 
 if ($Quick) {
     $tests = $tests | Where-Object { $_.Name -in @("boot", "shooting", "inventory", "integration", "death", "ui", "ui_icons") }
 }
+
+Write-Host "Running $($tests.Count) suite(s) from tests/suites.json (Godot $($manifest.godotVersion))" -ForegroundColor DarkGray
 
 $results = @()
 foreach ($test in $tests) {
@@ -61,7 +66,7 @@ foreach ($test in $tests) {
     $outPath = Join-Path $logDir "$name.out.txt"
     $errPath = Join-Path $logDir "$name.err.txt"
     Remove-Item -LiteralPath $outPath, $errPath -ErrorAction SilentlyContinue
-    $arguments = @($test.Args | ForEach-Object { [string]$_ })
+    $arguments = @("--headless", "--path", $projectRoot) + @($test.Args | ForEach-Object { [string]$_ })
     $proc = Start-Process -FilePath $console -ArgumentList $arguments -WorkingDirectory $projectRoot -RedirectStandardOutput $outPath -RedirectStandardError $errPath -PassThru -WindowStyle Hidden
     $finished = $proc.WaitForExit([int]$test.TimeoutMs)
     if (-not $finished) {

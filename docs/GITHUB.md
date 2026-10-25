@@ -17,9 +17,12 @@ order, and what to replace with your own account name.
 | [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md) | Short, enforceable, no committee theatre |
 | [SECURITY.md](../SECURITY.md) | What is actually in scope for an offline game |
 | [.github/ISSUE_TEMPLATE/](../.github/ISSUE_TEMPLATE/) and [.github/PULL_REQUEST_TEMPLATE.md](../.github/PULL_REQUEST_TEMPLATE.md) | Structured bug reports, feature requests and a review checklist |
+| [.github/workflows/tests.yml](../.github/workflows/tests.yml) | Linux CI for the headless suites; feeds the README **headless-tests** badge |
 
-There are **no GitHub Actions workflows in this repository**. The ones from the early layout were
-removed on purpose, so nothing runs on push or on a tag; the local suite runner is the test gate.
+There is **one GitHub Actions workflow**: `.github/workflows/tests.yml` runs every suite listed in
+`tests/suites.json` on Linux for each push to `main` and each pull request, then reports a single
+**headless-tests gate** check. The early Windows export workflow was removed on purpose, so there is
+still no release/packaging job: builds stay manual.
 
 The README header, the license badge and the issue-template links already point at
 **github.com/r48n34/riftward** and **r48n34.itch.io/riftward**, so there is nothing left to rename.
@@ -114,7 +117,10 @@ Topics are how people find Godot projects on GitHub; the first three do most of 
 
 - The repo sidebar should show **GPL-3.0 license**. If it shows "Unknown", the license file was not
   pushed or was renamed — it must be `LICENSE` at the root.
-- No CI runs on push, so the gate is local: run `tests/run_all.ps1` and confirm it prints
+- The badge at the top of the README reports the Linux CI run of the same suites. If it shows
+  **no status**, either no run has finished yet or Actions is disabled for the repository
+  (Settings → Actions → General → *Allow all actions*).
+- The gate is still local first: run `tests/run_all.ps1` and confirm it prints
   `All 14 test suites passed.` before you tag. It imports the project and runs all fourteen suites; a
   failure names its check in `tests/artifacts/logs/`.
 
@@ -128,8 +134,9 @@ Settings → Branches → **Add branch protection rule** for `main`:
 
 - Require a pull request before merging.
 - Disallow force pushes.
-
-Status checks can only be required after a CI workflow exists; none ships in this repository today.
+- Require the **headless-tests gate** status check. It only appears in the list after
+  `.github/workflows/tests.yml` has run at least once on `main`, so push a commit first, then add the
+  rule.
 
 Solo projects can skip this; it matters the moment someone else sends a PR.
 
@@ -152,7 +159,7 @@ Then GitHub → **Releases** → **Draft a new release**:
 - Title: `RIFTWARD 0.2.0`
 - Description: paste the release notes from `docs/releases/v0.2.0.md` (or a short version), plus
   `Windows 10/11, DirectX 12 GPU. Unzip and run RIFTWARD.exe.`
-- Publish. There is no release workflow, so upload `release/RIFTWARD-win64.zip` and
+- Publish. There is no release workflow (only the test workflow), so upload `release/RIFTWARD-win64.zip` and
   `release/SHA256SUMS.txt` by hand.
 
 GitHub also offers **Source code (zip)** on every release — that is your GPL source distribution, no

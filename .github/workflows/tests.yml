@@ -1,0 +1,147 @@
+name: headless-tests
+
+# Runs the local headless gate (tests/suites.json, the same list tests/run_all.ps1
+# uses) on Linux, one job per suite. The README badge points at this workflow:
+#   https://github.com/r48n34/riftward/actions/workflows/tests.yml/badge.svg
+# Add or change suites in tests/suites.json, never in this file.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: headless-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: "4.7.2"
+
+jobs:
+  prepare:
+    name: Prepare suite matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate tests/suites.json
+        run: python3 tools/ci_matrix.py --check
+
+      - name: Build the matrix
+        id: matrix
+        run: echo "matrix=$(python3 tools/ci_matrix.py --json)" >> "$GITHUB_OUTPUT"
+
+  suites:
+    name: ${{ matrix.name }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache the Godot binary
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64-v2
+
+      - name: Install Godot ${{ env.GODOT_VERSION }}
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/godot"
+          url="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -fsSL --retry 3 --retry-delay 2 -o /tmp/godot.zip "$url"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          install -m 755 "/tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
+          "$RUNNER_TEMP/godot/godot" --version
+
+      - name: Add Godot to PATH
+        shell: bash
+        run: echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+
+      - name: Import the project
+        shell: bash
+        run: godot --headless --path . --import || true
+
+      - name: Run suite
+        shell: bash
+        env:
+          SUITE_NAME: ${{ matrix.name }}
+          SUITE_ARGS: ${{ matrix.args }}
+          SUITE_MARKER: ${{ matrix.marker }}
+          SUITE_TIMEOUT: ${{ matrix.timeout }}
+        run: |
+          set -uo pipefail
+          log="${SUITE_NAME}.log"
+          {
+            echo "### Suite: \`${SUITE_NAME}\`"
+            echo '```text'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          read -ra ARGS <<< "$SUITE_ARGS"
+          set +e
+          timeout --kill-after=30s "${SUITE_TIMEOUT}s" godot --headless --path . "${ARGS[@]}" > "$log" 2>&1
+          code=$?
+          set -e
+
+          cat "$log"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+          status=0
+          if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
+            echo "::error::${SUITE_NAME}: timed out after ${SUITE_TIMEOUT}s"
+            status=1
+          fi
+          if grep -q "SCRIPT ERROR" "$log"; then
+            echo "::error::${SUITE_NAME}: the log contains a SCRIPT ERROR"
+            status=1
+          fi
+          if [ -n "$SUITE_MARKER" ] && ! grep -qF -- "$SUITE_MARKER" "$log"; then
+            echo "::error::${SUITE_NAME}: pass marker '${SUITE_MARKER}' was not printed"
+            status=1
+          fi
+
+          echo "Exit code: ${code}, marker: '${SUITE_MARKER:-none}'" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$status" -ne 0 ]; then
+            exit 1
+          fi
+          echo "PASS: ${SUITE_NAME}"
+
+      - name: Upload the suite log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: headless-log-${{ matrix.name }}
+          path: ${{ matrix.name }}.log
+          if-no-files-found: ignore
+
+  gate:
+    name: headless-tests gate
+    needs: [suites]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check the suite matrix result
+        shell: bash
+        env:
+          SUITES_RESULT: ${{ needs.suites.result }}
+        run: |
+          if [ "$SUITES_RESULT" != "success" ]; then
+            echo "::error::headless suites failed or were cancelled (result: ${SUITES_RESULT})"
+            exit 1
+          fi
+          echo "All suites passed."

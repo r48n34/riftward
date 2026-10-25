@@ -10,7 +10,12 @@ release bodies live in [docs/releases/](docs/releases/).
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- The README **headless-tests** badge is restored and now points at a workflow that exists instead of a
+  URL that 404s. `.github/workflows/tests.yml` runs every suite listed in `tests/suites.json` on Linux —
+  one job per suite, then one stable `headless-tests gate` check — and `tests/run_all.ps1` reads the same
+  manifest, so the badge and the local gate cannot drift apart again.
 
 ## [0.2.0] - 2026-10-25
 

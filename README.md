@@ -8,6 +8,7 @@ A single-player, first-person extraction shooter built in **Godot 4.7.2**.
 
 [**Play free on itch.io**](https://r48n34.itch.io/riftward) · [Features](docs/FEATURES.md) · [Build from source](#build-from-source) · [License](#license)
 
+[![headless-tests](https://github.com/r48n34/riftward/actions/workflows/tests.yml/badge.svg)](https://github.com/r48n34/riftward/actions/workflows/tests.yml)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 
 [![RIFTWARD](media/hero.png)](https://r48n34.itch.io/riftward)
@@ -118,6 +119,10 @@ Gamepad is supported and every action is rebindable in **Settings → Controls**
 ```powershell
 tests\run_all.ps1     # all 14 headless suites
 ```
+
+The same suites run on Linux in CI (`.github/workflows/tests.yml`) on every push and pull request —
+that is what the **headless-tests** badge reports. The suite list lives in `tests/suites.json`, so the local
+runner and CI stay in sync.
 
 ```
 autoload/    App, ContentDB, ProfileState, RunState, EventBus, AudioDirector

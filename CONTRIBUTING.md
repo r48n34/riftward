@@ -7,8 +7,9 @@ fixes and focused improvements are welcome.
 
 - **Licensing.** The project is GPL-3.0-or-later. By contributing you agree your contribution is
   licensed under the same terms.
-- **Keep the suites green.** All ten headless suites must pass before a PR is ready — see *Before you
-  open a pull request*.
+- **Keep the suites green.** All fourteen headless suites must pass before a PR is ready — see *Before you
+  open a pull request*. The suite list is [`tests/suites.json`](tests/suites.json); adding a suite there
+  wires it into both the local runner and CI.
 - **One concern per PR.** A fix that also reformats three unrelated files will be sent back.
 - **Never commit generated output.** `build/`, `release/`, `.build/` and `.godot/` are ignored on
   purpose; `git add -f` on any of them will get the commit rejected.
@@ -43,7 +44,7 @@ Prerequisites for export are in [docs/TECHNICAL.md](docs/TECHNICAL.md#15-packagi
 
 ## Before you open a pull request
 
-- [ ] `tests/run_all.ps1` passes locally (all ten suites).
+- [ ] `tests/run_all.ps1` passes locally (all fourteen suites; `-Quick` runs the fast subset).
 - [ ] The game boots from `scenes/boot.tscn` with no script errors in the console.
 - [ ] If you changed gameplay, the relevant capture scripts still run
       (`-- --smoke-capture`, `-- --shoot-smoke`, `-- --inventory-smoke`).
@@ -90,7 +91,8 @@ leaving the exfil beacon ringing with no way to reach it.
 
 1. Fork, then branch from `main`: `git checkout -b fix/exfil-beacon-timer`.
 2. Push and open a PR against `main`. Fill in the template.
-3. CI runs the headless suites on Linux. A red run must be fixed before review.
+3. CI (`.github/workflows/tests.yml`, the README **headless-tests** badge) runs the same suites on Linux,
+   one job per entry in `tests/suites.json`. A red run must be fixed before review.
 4. Describe *how you tested it*, not just what changed.
 
 ## Reporting bugs

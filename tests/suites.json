@@ -1,0 +1,90 @@
+{
+  "godotVersion": "4.7.2",
+  "_comment": "Single source of truth for the headless test suites. Consumed by tests/run_all.ps1 (local gate) and .github/workflows/tests.yml (the README 'headless-tests' badge). Add a suite here once and both runners pick it up.",
+  "suites": [
+    {
+      "name": "boot",
+      "args": ["--quit-after", "240"],
+      "marker": null,
+      "timeoutSeconds": 120
+    },
+    {
+      "name": "shooting",
+      "args": ["--quit-after", "4000", "--", "--shoot-smoke"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "inventory",
+      "args": ["--quit-after", "4000", "--", "--inventory-smoke"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "integration",
+      "args": ["--quit-after", "4000", "res://tests/integration_test.tscn"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "death",
+      "args": ["--quit-after", "4000", "res://tests/death_test.tscn"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "dungeon",
+      "args": ["--quit-after", "6000", "res://tests/dungeon_test.tscn"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 240
+    },
+    {
+      "name": "tutorial",
+      "args": ["--quit-after", "9000", "res://tests/tutorial_test.tscn"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "world",
+      "args": ["--quit-after", "4000", "res://features/world/world_test.tscn"],
+      "marker": "PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "world_variants",
+      "args": ["--quit-after", "12000", "res://tests/world_variants_test.tscn"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 300
+    },
+    {
+      "name": "ai",
+      "args": ["--script", "res://features/ai/ai_test.gd"],
+      "marker": "PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "companions",
+      "args": ["--script", "res://features/companions/companions_test.gd"],
+      "marker": "PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "progression",
+      "args": ["--script", "res://tests/progression_test.gd"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "ui",
+      "args": ["--quit-after", "2400", "res://ui/ui_demo.tscn"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "ui_icons",
+      "args": ["--script", "res://tests/ui_icons_test.gd"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 120
+    }
+  ]
+}
