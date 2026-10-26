@@ -15,13 +15,21 @@ test suites. If you change content counts, update this file too.
 - **12 selectable map presets** — eight core frontier maps plus Frost-9 and Nyx-12 additions; a
   difficulty still picks the featured map, and Quick Deploy/Hub let you override it. Preset weather
   pools override the planet pool so one planet can drop under different conditions.
-- **17–21 points of interest** plus a derelict freighter: Warden outpost, faction camps, relay spires,
-  crash site, vault, anomaly, ruin field, Ashen stockade, Bloom hive, Choir listening post, colony
-  ruins, a landed freighter and three exfil pads.
+- **24 base points of interest** (21 authored layout entries + 3 exfil pads; up to **28** with preset
+  extras) built from **20 authored POI types**: Warden outpost, 2 faction camps, 2 relay spires, crash
+  site, vault, anomaly, ruin field, Ashen stockade, Bloom hive, Choir listening post, colony ruins, a
+  landed derelict freighter, 3 exfil pads, and the seven second-wave kits **Foundry Hall, Habitation
+  Cluster, Comms Array, Fuel Depot, Field Clinic, Research Lab** and **Water Works**. Every type has a
+  data row in `POISpecs` (title, blurb, footprint/pad radius, interior, loot tier, garrison, hazard,
+  biomes, vehicle slot, map bias, Codex icon) that the loot, rideable, Codex and tactical-map systems read.
+- **15–17 enterable interiors** (15 on the 24-POI base layout; 16 with the world-test preset; more when
+  preset extras roll interior kits) across the camp command habs, Vault bunker, crash-site hull, colony hab,
+  Choir bunker, Ashen command hall, derelict freighter and all seven second-wave sites; interiors are real
+  geometry with loot/enemy anchors and a navmesh baked through the doorways.
+- **POI-local clutter**: barrels, crates, pallets, cable spools and debris around the pad rings in five
+  MultiMesh batches (about 480 instances at default density; 598 on the world-test preset), with ~2 loot
+  anchors per POI exposed to the cache system.
 - **16–22 roadside outbuildings** placed along road polylines: checkpoints, relay boxes, ruined walls.
-- **Enterable interiors** in the faction camp command hab, Vault bunker, crash-site hull, colony hab,
-  Choir bunker, Ashen command hall and the derelict freighter; interiors are real geometry with
-  loot/enemy anchors, not scene transitions.
 - **Water and lava basins** carved into low ground, with animated surfaces, shoreline props, map
   tinting and analytic gameplay queries (wading, swimming, heat damage).
 - **Seeded weather** (18 states across the planets: clear, overcast, rain, squall, dust, ashfall,
@@ -32,6 +40,77 @@ test suites. If you change content counts, update this file too.
   night headlamp; Blackout inserts runs late in the night cycle.
 - Roads, landmark structures, roughly **5,000–9,000 MultiMesh scatter instances**.
 - Asynchronous navmesh bake over 8x8 terrain chunks (cell 2.0 m, agent height 1.9 m, radius 1.3 m).
+
+## Rideables
+
+- **Five rideable archetypes**, all `CharacterBody3D` with a shared hand-rolled raycast
+  suspension/steering/thrust model in `features/vehicles/vehicle_physics.gd` (no `VehicleBody3D`), so they
+  behave deterministically and are testable headless:
+
+  | Id | Name | Kind | Top speed | Hull | Seats | Notes |
+  |---|---|---|---:|---:|---:|---|
+  | `rig` | Rift Rig | ground car | 30 m/s (108 km/h) | 340 | 2 | wheels, handbrake drift, boost reserve |
+  | `hoverbike` | Vale Hoverbike | hover | 38 m/s (137 km/h) | 180 | 1 | spring-damper hover, leans into turns |
+  | `airplane` | Kestrel Wing | aircraft | 90 m/s (324 km/h) | 420 | 1 | needs airspeed: stall ~30 m/s, takeoff ~38 m/s |
+  | `spaceship` | Void Skiff | VTOL | 60 m/s (216 km/h) | 500 | 1 | altitude band, 120 m clamp, auto-dock |
+  | `horse` | Warden Steed | beast | 18 m/s (65 km/h) | 220 | 1 | gaits idle/walk/trot/canter/gallop, stamina, jump |
+
+- **Mount/dismount** with **E** (interact); the player is reparented onto the seat and keeps its own
+  camera (local yaw/pitch), weapons and abilities are locked while riding, and a vehicle HUD panel shows
+  the speed dial, name/kind, hull bar, boost/stamina and gear/gait. **T** whistles the nearest Warden
+  steed. Dungeon entry is blocked while riding; death/storm destruction forces a dismount.
+- **Seeded placement** (`VehicleSites.build()`): one rig and one hoverbike are guaranteed at the drop
+  zone; the airplane spawns at `comms_array`/`relay_spire`/`crash_site`, the spaceship at
+  `foundry_hall`/`derelict_ship`/`comms_array` and the horse at `warden_outpost`/`faction_camp`, with a
+  deterministic drop-zone fallback so a run always has all five. Uses physics layer 11 “Vehicle”.
+- Engine/wind loops for machines and gait-timed hoof/whinny audio for the steed run through
+  `AudioDirector.play_loop_3d` / `play_sfx`, with boost, brake, horn, impact and explosion SFX, dust/exhaust
+  particle hooks, and a destruction state.
+
+## Cut-scenes
+
+- **Four authored cut-scenes** on a data-driven beat timeline
+  (`features/cutscene/cutscene_director.gd` + `ui/screens/cinematic_overlay.gd`):
+  - **`deployment`** — 6 s drop-feed recap card (the live four/five-act feed is the upgraded loading
+    screen).
+  - **`insertion`** — 4 s in-world ramp-down, first-person rise and first radio traffic at run start.
+  - **`exfil`** — 6 s pad approach, Kestrel ramp, lift-off and fade, played **before** the run ends.
+  - **`boss`** — 4 s dossier + orbit confrontation shot, once per boss instance, skipped in Field
+    Training and aborted cleanly if the boss/player dies.
+- Each beat carries a duration, rail/orbit/fixed camera keyframes, caption, radio line, optional SFX and
+  music, and per-beat HUD visibility. A **12 s hard cap** compresses oversized timelines; **Esc/Space/Enter
+  or the on-screen Skip** ends a shot early; every exit path restores HUD, mouse and input.
+- **Reduce motion** collapses a shot into one 1.2 s static card that carries every caption; subtitles
+  setting respected. Works without a rendered 3D world (2D-card fallback), which the headless suite uses.
+- `App.play_cinematic(id, opts)` / `App.is_cinematic()` own playback; `EventBus.cinematic_state_changed`
+  tells the HUD and gameplay input to stand down.
+
+## Sites, loot and Codex
+
+- **10 authored salvage cargo items** (never equipped; recovered, banked and sold/scrapped):
+
+  | Item | Rarity | Base value | Effect |
+  |---|---|---:|---|
+  | Field Ration | Common | 18 | heal 25 |
+  | Beacon Flare | Common | 22 | mark extraction |
+  | Alloy Plate | Uncommon | 28 | armor +4 |
+  | Stim Injector | Uncommon | 32 | heal 60, 8 s speed |
+  | Ammo Crate | Uncommon | 34 | 35% ammo |
+  | Repair Kit | Rare | 52 | vehicle repair 80, armor repair 15 |
+  | Fuel Cell | Rare | 56 | vehicle fuel +50% |
+  | Map Intel | Rare | 68 | reveal POIs |
+  | Relic Shard | Epic | 84 | ability power +8%, rift resist +10% |
+  | Trophy Core | Prototype | 120 | luck +10%, salvage +15% |
+
+- **3 loot tables** — `poi_common`, `poi_rare`, `vehicle_stash` — weighted mixes of cargo, gear and
+  weapons with salvage bands, core chances and rarity floors. POI `loot_tier` selects the table
+  (`poi_rare` for tiers 3–4), vehicle stashes use `vehicle_stash`, and everything falls back to
+  `poi_common`.
+- Loot caches are rolled by `ContentDB.roll_loot_table()` / `build_loot_cache_payload()` and spawn on
+  the POI clutter anchors from `WorldBuilder.get_loot_props()` (about 10 caches per run).
+- **7 new POI Codex records** and **5 rideable Codex records**, with new **Sites** and **Rideables**
+  Codex tabs; POI records are enriched from `POISpecs` and rideable records from the live vehicle specs.
+- Save format remains **v5** — the new items/tables/Codex records are catalog data only.
 
 ## Under-reach dungeons
 
@@ -127,17 +206,18 @@ test suites. If you change content counts, update this file too.
 
 - **13 data-driven screens** plus HUD and a paused inventory overlay, all icon-first with tooltips;
   bundled Sora, Inter and JetBrains Mono fonts.
-- **Deployment loading cinema** — a four-act drop feed replacing the old progress page:
+- **Deployment loading cinema** — a five-act drop feed replacing the old progress page:
   **Threat Signature** (code-drawn boss dossier with weak points, phases, integrity/shield bars and
   counter-intel), **Rift Breach**, **Drop Descent** (first-person pod footage with telemetry and
-  altitude tape) and **Touchdown**. Shots are deterministic, asset-free and tinted by the selected
+  altitude tape), **Insertion** (the new in-world ramp/rise act) and **Touchdown**, with per-act audio
+  stingers. Shots are deterministic, asset-free and tinted by the selected
   map/planet, the boss is drawn from that planet's roster and run seed, and the live progress bar,
   step label and field notes stay visible throughout. Space/Enter skips to a static briefing;
   reduced-motion uses the same static boss card.
 - **Visual-first expansion screens**: Loadout/Locker item art (weapon and gear silhouettes), compact
   Warden previews for cosmetics, skills medallions, squad Warden portraits and Driftling art, and the
-  outpost diorama. Quick Deploy uses planet portraits and map thumbnails; the Codex adds Weather and
-  Operations tabs with portraits, thumbnails, medallions and target rosters.
+  outpost diorama. Quick Deploy uses planet portraits and map thumbnails; the Codex adds Sites, Rideables,
+  Weather and Operations tabs with portraits, thumbnails, medallions and target rosters.
 - **12 new line icons** (weather snow/ion/void/meteor/toxic, Ashen/Bloom/Choir faction sigils and four
   discipline sigils) on top of the existing bundled set; reusable code-drawn components
   (`UIIconMedallion`, `UIItemArt`, `UIPlanetPortrait`, `UIMapThumbnail`, `UIAllyPortrait`, `UIPetArt`).
@@ -153,8 +233,23 @@ test suites. If you change content counts, update this file too.
 
 ## Audio
 
-- Procedurally synthesised SFX with 2D/3D pools and a looping ambient music bed. No external audio
-  assets.
+- **113 procedural SFX ids** synthesised from an authored recipe table (`features/audio/sfx_catalog.gd`)
+  on a worker thread pool: UI, ten weapon families and tails, reload stages, hits/headshots/kills,
+  explosions, material impacts, shields/armor, footsteps, abilities/statuses, enemy vocals, bosses,
+  weather and ambience beds, vehicles, doors, loot, build/upgrade and extraction/cut-scene stings.
+- **8 music cues plus `silent`** — `menu`, `hub`, `deploy`, `combat`, `boss`, `exfil`, `storm`,
+  `results` — each authored as a tempo/chord-progression/stem mix with pad, bass, pulse, percussion and
+  texture layers and seamless loop seams. Playback uses a **two-player crossfade**
+  (`set_music_track(track, fade := 1.6)`); the run switches cues by state (exfil > boss > storm > combat >
+  deploy) and the menu/hub/loading/results screens have their own beds.
+- **Five buses** — Music, SFX, UI, Ambience, Vehicles — with an `AudioEffectLimiter` on Master, so the
+  options screen can mix each category independently.
+- **Recording-quality overrides**: when the CC0 Kenney packs are present, `features/audio/audio_packs.gd`
+  maps 25 logical ids onto 188 curated WAV/OGG files (interface, UI, sci-fi, impact) and silently uses the
+  procedural synth for anything missing. Every id resolves either way (`has_stream()`).
+- Positional loops (`play_loop_3d`) for engines/hoists, an ambience bed (`set_ambience`), deterministic
+  pitch/volume variation (`play_varied`) for repeated gunfire/impacts, and 2D/3D one-shot pools.
+- No voice acting: radio dialogue is subtitles.
 
 ## Randomisation
 
@@ -190,3 +285,16 @@ test suites. If you change content counts, update this file too.
 | Minimap / tactical map | M (overlay unlocks at level 2) | Back |
 | Pause | Esc | Start |
 | Self-revive (when downed) | Hold E | Hold Y |
+| Summon steed (horse whistle) | T | - |
+| Mount / dismount rideable | E | Y |
+| Vehicle throttle / steer | W / S and A / D | Left stick |
+| Vehicle boost | Shift | L3 |
+| Vehicle brake / descend | Ctrl or C | B |
+| Vehicle jump / ascend | Space | A |
+| Vehicle horn | LMB | RT |
+| Skip cut-scene | Esc, Space or Enter (or on-screen Skip) | B |
+
+While riding, the on-foot verbs are reused: **Shift** = boost, **Ctrl/C** = brake (descend in the
+spaceship), **Space** = jump/ascend, **LMB** = horn. The **T** whistle only calls the Warden steed —
+machines are found in the world rather than summoned. Cut-scenes can be skipped with Esc, Space, Enter or
+the on-screen Skip button, both keyboard and gamepad focus.

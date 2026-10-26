@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="RIFTWARD"
-config/version="0.2.0"
 config/description="Drop into the Reach. Build what survives."
+config/version="0.3.0"
 run/main_scene="res://scenes/boot.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 boot_splash/bg_color=Color(0.043, 0.067, 0.078, 1)
@@ -51,6 +51,7 @@ theme/default_font_multichannel_signed_distance_field=true
 3d_physics/layer_8="Deployable"
 3d_physics/layer_9="Pickup"
 3d_physics/layer_10="Trigger"
+3d_physics/layer_11="Vehicle"
 
 [physics]
 

@@ -36,12 +36,24 @@ the map closes in around you. Pick the wrong moment and the storm takes everythi
 
 - A seeded 1.8 km x 1.8 km region, rebuilt on every drop
 - Five planets and twelve selectable maps, eighteen weather states and a day/night cycle
-- 17-21 points of interest — stockades, hives, listening posts, colony ruins, a derelict freighter —
-  plus roads, roadside outbuildings and landmark structures
+- 24 base points of interest (up to 28) from 20 authored site types — stockades, hives, listening posts,
+  colony ruins, a derelict freighter, a foundry, a tank farm, a field clinic and more — plus roads,
+  roadside outbuildings and landmark structures
 - Enterable buildings and ship interiors, water to swim and lava to avoid
 - Three themed under-reach dungeons with procedural rooms, guardians and loot
 - Twenty world events per run pool, with three firing in each deployment and a Reach Event banner
 - Late-run pressure: a shrinking Collapse storm, a reinforcement director and timed endgame events
+
+## Sound and motion
+
+- 113 procedural sound effects: weapons and reloads, impacts, abilities, UI, footsteps, storms, bosses,
+  engines and extraction
+- Eight music cues — menu, hub, deploy, combat, boss, exfil, storm, results — that follow the run and
+  crossfade over 1.6 s
+- Five rideables: the Rift Rig ground car, Vale Hoverbike, Kestrel Wing airplane, Void Skiff VTOL and the
+  Warden Steed. Mount with **E**, whistle the horse with **T**; weapons lock while you ride
+- Four authored cut-scenes — a drop recap, a first-person insertion, an exfil lift-off and a boss
+  confrontation — skippable and capped at 12 seconds
 
 ## Combat
 
@@ -67,9 +79,10 @@ isometric diorama.
 ## A field terminal made for the fight
 
 The interface is image-first: weapon and gear silhouettes, Warden and Driftling portraits, planet
-portraits and map thumbnails, discipline medallions, an expandable outpost diorama and a Weather/
-Operations codex. Display settings cover window mode, resolution, render scale, anti-aliasing, frame
-cap and quality presets. Twelve new line icons join the bundled set; backgrounds are drawn in-engine.
+portraits and map thumbnails, discipline medallions, an expandable outpost diorama and a Codex with Sites,
+Rideables, Weather and Operations tabs. Display settings cover window mode, resolution, render scale,
+anti-aliasing, frame cap and quality presets. Twelve new line icons join the bundled set; backgrounds are
+drawn in-engine.
 
 ## Progression
 
@@ -82,8 +95,10 @@ sets to chase between runs.
 - No mid-run save: quitting during a deployment abandons that run
 - Keyboard and mouse, full gamepad support, every action rebindable
 - Windows 10/11 64-bit, DirectX 12 GPU, 4 GB RAM (8 GB recommended), about 150 MB of disk space
-- Built in Godot 4.7.2. All geometry, materials, effects and audio are generated procedurally in-engine,
-  with no external models or paid assets
+- Built in Godot 4.7.2. All 3D geometry, materials and shaders are generated procedurally in-engine, and
+  the sound effects and music are synthesised from hand-authored recipes. The audio and particle/prototype
+  texture layer also includes seven CC0 (public-domain) Kenney asset packs; no external 3D models or paid
+  assets are used
 
 Install instructions, controls and troubleshooting are on the download page. Mind the storm.
 ```
@@ -156,9 +171,10 @@ If your antivirus quarantines the executable, restore it and add an exclusion fo
 
 ## Controls
 
-WASD move · mouse look · **LMB** fire · **RMB** aim · **R** reload · **E** interact · **Q** / **F**
-abilities · **X** ultimate · **Shift** sprint · **Ctrl** or **C** crouch · **Space** jump ·
-**I** inventory · **M** map · **Esc** pause
+WASD move · mouse look · **LMB** fire · **RMB** aim · **R** reload · **E** interact / mount or dismount a
+rideable · **T** whistle the Warden Steed · **Q** / **F** abilities · **X** ultimate · **Shift** sprint
+(or vehicle boost) · **Ctrl** or **C** crouch (or vehicle brake / descend) · **Space** jump (or vehicle
+jump / ascend) · **I** inventory · **M** map · **Esc** pause / skip a cut-scene
 
 Every action can be rebound in **Settings → Controls**.
 
@@ -197,7 +213,7 @@ Download the new zip and replace the whole game folder. Your save folder stays u
 | Pricing | No payment (or `$0 or donate`) |
 | Platform | Windows |
 | Cover image | `release/store/cover_630x500.png` |
-| Version | `0.2.0` |
+| Version | `0.3.0` |
 | Visibility | Draft until the page and download are tested |
 
 ---

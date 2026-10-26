@@ -44,7 +44,7 @@ The tone is **sunlit, strange and hopeful**, not grimdark. The world is beautifu
 - **Cinder-4** — Basalt Shelf, Ember Canyon and Ash Flats, with lava basins, ember storms and heat haze.
 - **Thalassa-2** — Tidal Shelf, Kelp Basin and Salt Flats, with deep water, rain, squalls and fog fronts.
 
-**POIs (17–21 per run):** a Warden outpost landmark, 2 faction camps, 2 relay spires, a crash site, a vault, an anomaly, a ruin field, an Ashen stockade, a Bloom hive, a Choir listening post, colony ruins, a landed derelict freighter, and 3 exfil pads, plus preset-specific survey camps, relays, ruins and wrecks. Sixteen to twenty-two small roadside outbuildings (checkpoints, relay boxes, ruined walls) make the road network feel inhabited. Several POIs are **enterable** (camp hab, Vault bunker, crash hull, colony hab, Choir bunker, Ashen command hall and the freighter) with interiors, loot and garrison anchors. Roads with teal pylons connect the frontier. Roughly 5,000–9,000 MultiMesh scatter instances and 52 horizon spires carry the sense of scale.
+**POIs (24 base per run, up to 28):** a Warden outpost landmark, 2 faction camps, 2 relay spires, a crash site, a vault, an anomaly, a ruin field, an Ashen stockade, a Bloom hive, a Choir listening post, colony ruins, a landed derelict freighter, 3 exfil pads, plus the seven second-wave site kits **Foundry Hall, Habitation Cluster, Comms Array, Fuel Depot, Field Clinic, Research Lab** and **Water Works** — 20 authored POI types in all. Presets append up to four extra objectives from the kit pool. Sixteen to twenty-two small roadside outbuildings (checkpoints, relay boxes, ruined walls) make the road network feel inhabited. **Fifteen to seventeen POIs are enterable** (15 on the base layout; 16 in the world-test preset; up to 17 when four preset extras roll interior kits — camp habs, Vault bunker, crash hull, colony hab, Choir bunker, Ashen command hall, the freighter and the seven new kits) with interiors, loot and garrison anchors; the second-wave kits each carry a real detail pass — catwalks, tank farms, dish gantries, med bays and lab wings — rather than a single silhouette. Roads with teal pylons connect the frontier. Roughly 5,000–9,000 MultiMesh scatter instances, about 480 POI-local clutter pieces (barrels, crates, pallets, spools, debris) and 52 horizon spires carry the sense of scale.
 
 **Map presets:** twelve named maps across five planets. A difficulty keeps a featured map, but Quick Deploy and the Hub let the player override it. Each preset selects a biome-emphasis rotation, sky/sun/fog mood, extra POIs, roadside density, scatter density, fluid budget, a preset-level weather pool and start time of day.
 
@@ -135,18 +135,79 @@ AI uses vision + LOS + hearing, alert propagation, ranged telegraphs, melee lung
 
 ## 7. UI, art and audio direction
 
-**UI:** a single dark-glass theme built from tokens: ink `#0B1114`, surface `#121A1D`, ivory `#F4EFE5`, muted `#93A5A8`, mint `#62E6C3`, amber `#FFB866`, danger `#FF6E6E`. Typography is Sora (display), Inter (body), JetBrains Mono (numbers). 8 px spacing rhythm, 12 px radii, thin borders, generous whitespace, one primary action per screen. The entry hierarchy is Quick Deploy first, Hub second. The interface is image-first: reusable code-drawn art components (`UIIconMedallion`, `UIItemArt`, `UIPlanetPortrait`, `UIMapThumbnail`, `UIAllyPortrait`, `UIPetArt`, outpost module art, compact Warden previews) show weapons, gear, planets, maps, people and structures directly; tools, stats and explanations live in icon+figure pairs and tooltips. Quick Deploy presents portraits, thumbnails and mode cards, the Codex gained Weather and Operations tabs, and the Locker, Skills, Squad, Loadout and Outpost screens were rebuilt around their objects. All screens are container-driven and tested down to 1280×720.
+**UI:** a single dark-glass theme built from tokens: ink `#0B1114`, surface `#121A1D`, ivory `#F4EFE5`, muted `#93A5A8`, mint `#62E6C3`, amber `#FFB866`, danger `#FF6E6E`. Typography is Sora (display), Inter (body), JetBrains Mono (numbers). 8 px spacing rhythm, 12 px radii, thin borders, generous whitespace, one primary action per screen. The entry hierarchy is Quick Deploy first, Hub second. The interface is image-first: reusable code-drawn art components (`UIIconMedallion`, `UIItemArt`, `UIPlanetPortrait`, `UIMapThumbnail`, `UIAllyPortrait`, `UIPetArt`, outpost module art, compact Warden previews) show weapons, gear, planets, maps, people and structures directly; tools, stats and explanations live in icon+figure pairs and tooltips. Quick Deploy presents portraits, thumbnails and mode cards, the Codex gained Sites, Rideables, Weather and Operations tabs, and the Locker, Skills, Squad, Loadout and Outpost screens were rebuilt around their objects. All screens are container-driven and tested down to 1280×720.
 
-**HUD:** minimap top-left with objectives and the FIELD OPS tracker below it, vitals bottom-left, ability tray bottom-centre, four-slot weapon/ammo block bottom-right, compass and Collapse timer top-centre (with map/difficulty/mode identity), weather icon and local clock top-right, squad top-right, radio subtitles centre-bottom, capped notification feed, boss bar, damage arcs, precision scope, style-specific ADS sight and crosshair. A **Reach Event banner** (icon, title, colour, wrapped copy, queued, auto-hide ~7 s, reduce-motion aware) announces world events. The training card replaces the objective stack during Field Training; the dungeon banner replaces the minimap underground; water/lava tint the screen edges. Pressing I pauses into the field inventory (loadout, gear, satchel loot, rift mods). Information is readable at a glance and never blocks combat.
+**HUD:** minimap top-left with objectives and the FIELD OPS tracker below it, vitals bottom-left, ability tray bottom-centre, four-slot weapon/ammo block bottom-right, compass and Collapse timer top-centre (with map/difficulty/mode identity), weather icon and local clock top-right, squad top-right, radio subtitles centre-bottom, capped notification feed, boss bar, damage arcs, precision scope, style-specific ADS sight and crosshair. A **Reach Event banner** (icon, title, colour, wrapped copy, queued, auto-hide ~7 s, reduce-motion aware) announces world events. Riding swaps the weapon block for a **vehicle panel** — speed dial, hull bar, boost/stamina and gear/gait — and hides combat affordances, because a vehicle is a different verb set, not a second gun. The training card replaces the objective stack during Field Training; the dungeon banner replaces the minimap underground; water/lava tint the screen edges. Pressing I pauses into the field inventory (loadout, gear, satchel loot, rift mods). Information is readable at a glance and never blocks combat.
 
-**Art:** sunlit stylized low-poly, with per-planet map moods. Warm low sun, volumetric dust, ringed gas giant, ivory brutalist ruins, rust and teal; Ashen Shelf runs orange dusk, Glass Expanse pale overcast, Rift Scar violet storm; Frost-9 turns the palette to pale ice and blue shadow, Nyx-12 to violet rift light over black basins. Faction silhouettes and emissive weakpoints are designed for readability. Everything is generated from primitives and custom shaders; no external art assets (the 12 new SVG line icons are authored in-repo).
+**Art:** sunlit stylized low-poly, with per-planet map moods. Warm low sun, volumetric dust, ringed gas giant, ivory brutalist ruins, rust and teal; Ashen Shelf runs orange dusk, Glass Expanse pale overcast, Rift Scar violet storm; Frost-9 turns the palette to pale ice and blue shadow, Nyx-12 to violet rift light over black basins. Faction silhouettes and emissive weakpoints are designed for readability. All 3D geometry, materials and shaders are generated from primitives and custom shaders; the 12 new SVG line icons are authored in-repo. The only imported art is texture-level: seven CC0 Kenney packs supply particle masks, prototype floor/wall panels and UI/impact/engine/music audio, curated so procedural silhouettes still carry every form.
 
-**Audio:** original procedural SFX (layered weapons, impacts, abilities, UI, footsteps, storm) and a looping ambient music bed that shifts mood between the menu, hub and deployment. Radio dialogue is text with subtitles. No voice acting.
+**Audio:** the sound design is *material-first*: real recorded CC0 Kenney impacts, footsteps, UI tones,
+engines and short music jingles sit on top of a procedural synth bed, so the world sounds physical
+without shipping a licensed soundtrack. 113 procedural ids cover the verbs; 25 of them are upgraded by
+curated recordings when the packs are present, with the synth always as fallback. Music is the run-state
+language: eight cues (menu, hub, deploy, combat, boss, exfil, storm, results) plus silence crossfade over
+1.6 s, so the score comments on pressure instead of looping at the player. Buses (Music/SFX/UI/Ambience/
+Vehicles) and a master limiter keep gunfire, engines and radio stingers legible under the mix; the player
+can mix each category. Radio dialogue is text with subtitles — no voice acting. Vehicles carry engine/wind
+loops, the horse carries gait-timed hoof cadence and whinnies, and every ride has a horn; cut-scenes use
+short stings (ramp hiss, thud, radio chirp, boss roar, lift-off) rather than dialogue.
 
 ## 8. Session arc
 
 A typical session: choose Quick Deploy (planet/map/difficulty/mode) or check the contract board (2 min) → adjust loadout, locker, skills and squad (2 min) → deploy (18 min run clock in Normal; ~9 real minutes in Quick; 14 in Gauntlet) → fight through 3–6 objective sites plus caches/bounties, loot elites, maybe take a Rift Shrine gamble → call the Kestrel dropship from an exfil pad and hold (75 sec game time) → results with recovered items and spend rewards (3–5 min) → one more run with a different build, planet or mode. A first-time player should have a complete run inside the first 20 minutes; a veteran should be chaining Threat 3 Vault hunts or Onslaught elite surges.
 
-## 9. What "done" means for this version
+## 9. Sound and motion (0.3.0 direction)
+
+**Audio direction.** RIFTWARD should sound like a field terminal with a heartbeat, not a AAA war mix.
+The rules:
+
+1. **Every verb has a voice.** If the player can do it — fire, reload, dash, loot, mount, boost, whistle —
+   it makes a sound from a fixed, authored id list (113 procedural recipes, with curated recordings on
+   the 25 ids where a real sample sells the action better). This keeps gameplay feedback stable enough to
+   read under stress and cheap enough to run without a sound designer.
+2. **Music is state, not wallpaper.** Cues map to run states (deploy → combat within 48 m of a hostile →
+   boss → storm → exfil → results) and crossfade over 1.6 s through two players. Combat starts when the
+   fight does, not when a playlist says so; exfil outranks everything.
+3. **Physical over orchestral.** Impacts, engines and the horse's hooves are material recordings or
+   physical models; the synth fills gaps and ambience. The mix is split into five player-facing buses so a
+   player can turn down gunfire or engines without losing the radio.
+4. **Silence is a cue.** `silent` is a first-class music id — the menu's tension, insertion beats and
+   quiet interiors can drop the bed entirely, which makes the next sting land.
+5. **No voice acting.** Radio is subtitles plus signal-processing stings; text keeps localisation cheap and
+   the tone consistent with the game's field-terminal UI.
+
+**Cut-scene beats.** Four scenes, each with one job:
+
+- **Deployment (6 s recap card)** — the live drop feed already plays during loading; the recap is a short
+  "this is what you are dropping into" card for the summary/return path.
+- **Insertion (4 s)** — ramp down, first-person rise, first radio line. It exists to hand the player their
+  eyes and their body at the exact moment the run becomes live, without a fade-to-black.
+- **Boss (4 s)** — dossier + orbit + roar stinger, once per boss instance. It is a promise about the fight
+  (phases, weak points) rather than a spectacle; it aborts instantly if either combatant dies.
+- **Exfil (6 s)** — approach, ramp, lift-off, fade, played *before* the run ends. The reward for extracting
+  is the shot of leaving; ending the run first would steal it.
+
+Rules: every beat is data (duration, camera mode, caption, radio, sting, music, HUD), the whole timeline
+is capped at **12 s**, **Esc/Space/Enter or Skip** always works, reduce motion replaces the footage with a
+**1.2 s card** carrying every caption, and every exit path restores HUD, mouse and input. Cut-scenes are
+punctuation; the player is never out of control long enough to get bored or killed.
+
+**Rideable intent.** Traversal expression, not combat power:
+
+- **The rig** is the safe, heavy option — two seats, handbrake drifts for style, a big hull for surviving a
+  bad line. **The hoverbike** is the greedy option: fastest across broken ground, no protection.
+- **The wing** and **the skiff** turn the 1.8 km map into a vertical space: the airplane demands airspeed
+  discipline (stall/takeoff thresholds) and the VTOL trades speed for forgiving altitude control and
+  auto-dock. They are how a confident player crosses the frontier for an objective or an exfil.
+- **The horse** is the narrative and tutorial mount — a Warden steed with real gaits, stamina and a
+  whistle (**T**), deliberately slower than machines but at home anywhere, dungeon-adjacent and quiet.
+- All five use a shared hand-rolled raycast suspension/thrust model on `CharacterBody3D` rather than
+  `VehicleBody3D`: it is deterministic, headless-testable, and consistent with the rest of the project's
+  procedural physics style.
+- Riding **locks weapons and abilities** and swaps the HUD to vehicle telemetry. That is the trade: speed
+  and a bigger collision profile for the ability to fight. Dungeons stay on foot (entry is blocked while
+  riding) and a forced dismount on death or storm destruction keeps the run rules intact.
+
+## 10. What "done" means for this version
 
 A feature-complete single-player vertical slice with the systems and content above, polished enough to play end-to-end without developer intervention. It is not a live-service game and not a full commercial campaign. The roadmap beyond this build: a map overlay, full grenade selection, freeform outpost placement, daily seeds/leaderboards, co-op, more biome kits, more boss arenas, and a standalone export pipeline.

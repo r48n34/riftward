@@ -85,6 +85,30 @@
       "args": ["--script", "res://tests/ui_icons_test.gd"],
       "marker": "RESULT: PASS",
       "timeoutSeconds": 120
+    },
+    {
+      "name": "audio",
+      "args": ["--script", "res://tests/audio_test.gd"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "vehicles",
+      "args": ["--quit-after", "6000", "res://tests/vehicles_test.tscn"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 240
+    },
+    {
+      "name": "cutscenes",
+      "args": ["--quit-after", "6000", "res://tests/cutscene_test.tscn"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
+    },
+    {
+      "name": "assets",
+      "args": ["--script", "res://tests/assets_test.gd"],
+      "marker": "RESULT: PASS",
+      "timeoutSeconds": 180
     }
   ]
 }

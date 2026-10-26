@@ -20,6 +20,14 @@ signal world_event(title: String, description: String, icon: StringName, color: 
 signal dungeon_state_changed(active: bool, dungeon_name: String)
 signal hazard_state_changed(state: StringName)
 signal tutorial_stage_changed(stage: Dictionary)
+## Cinematic ownership. Emitted when a cut-scene starts and when it releases the
+## view back to gameplay; every listener must be able to survive the end signal
+## arriving without a matching start.
+signal cinematic_state_changed(active: bool, cutscene_id: StringName)
+## Rideables. Vehicles are scene-local, but HUD, audio and the tutorial watch
+## the seat state through the bus instead of polling every frame.
+signal vehicle_mounted(vehicle: Node, vehicle_id: StringName)
+signal vehicle_dismounted(vehicle: Node, vehicle_id: StringName)
 
 
 func notify(title: String, message: String, severity: StringName = &"info") -> void:

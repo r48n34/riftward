@@ -13,7 +13,8 @@ extends Node3D
 ##   func sample_height(world_xz: Vector2) -> float
 ##   func get_spawn_points() -> Array[Vector3]       # 2 flat drop zones
 ##   func get_exfil_points() -> Array[Dictionary]    # 3 x {position, name}
-##   func get_pois() -> Array[Dictionary]            # 16 base POIs (+ preset extras)
+##   func get_pois() -> Array[Dictionary]            # 24 base POIs (+ preset extras)
+##   func get_loot_props() -> Array[Dictionary]      # POI clutter props for LootCache
 ##   func get_roadside_points() -> Array[Dictionary] # 10-14 roadside outbuildings
 ##   func get_nav_region() -> NavigationRegion3D
 ##   func get_map_texture() -> Texture2D
@@ -106,6 +107,9 @@ var _owned_roots: Array[Node] = []
 var _stats: Dictionary = {}
 var _path_rng := RandomNumberGenerator.new()
 var _roadside_points: Array[Dictionary] = []
+## POI-local clutter props surfaced for LootCache:
+## [{position: Vector3, kind: StringName, poi_index: int, poi_type: StringName}]
+var _loot_props: Array[Dictionary] = []
 
 # --- Planet / fluid / environment state --------------------------------------
 var _planet: Dictionary = {}
@@ -140,6 +144,16 @@ const POI_LAYOUT := [
 	{"type": "choir_post", "biome": 1, "r_min": 300.0, "r_max": 700.0, "name": "Choir Listening Post", "radius": 36.0, "pad": 18.0},
 	{"type": "colony_ruins", "biome": 0, "r_min": 230.0, "r_max": 620.0, "name": "Colony Ruins", "radius": 40.0, "pad": 20.0},
 	{"type": "derelict_ship", "biome": 2, "r_min": 260.0, "r_max": 640.0, "name": "Derelict Freighter", "radius": 46.0, "pad": 26.0},
+	# Second-wave kits. Appended after the authored 14 so existing seeds keep
+	# their original POI positions; they accept a tighter 190 m spacing and a
+	# relaxed flatness limit so a 1.8 km frontier can still hold all of them.
+	{"type": "foundry_hall", "biome": 1, "r_min": 250.0, "r_max": 800.0, "name": "Foundry Hall", "radius": 46.0, "pad": 26.0, "spacing": 190.0, "flat_limit": 12.0, "attempts": 900},
+	{"type": "hab_cluster", "biome": 0, "r_min": 235.0, "r_max": 760.0, "name": "Habitation Cluster", "radius": 44.0, "pad": 24.0, "spacing": 190.0, "flat_limit": 12.0, "attempts": 900},
+	{"type": "comms_array", "biome": 2, "r_min": 300.0, "r_max": 810.0, "name": "Comms Array", "radius": 34.0, "pad": 20.0, "spacing": 190.0, "flat_limit": 12.0, "attempts": 900},
+	{"type": "fuel_depot", "biome": 1, "r_min": 265.0, "r_max": 780.0, "name": "Fuel Depot", "radius": 44.0, "pad": 26.0, "spacing": 190.0, "flat_limit": 12.0, "attempts": 900},
+	{"type": "clinic_shelter", "biome": 0, "r_min": 240.0, "r_max": 740.0, "name": "Field Clinic", "radius": 38.0, "pad": 22.0, "spacing": 190.0, "flat_limit": 12.0, "attempts": 900},
+	{"type": "research_lab", "biome": 2, "r_min": 320.0, "r_max": 810.0, "name": "Research Lab", "radius": 40.0, "pad": 24.0, "spacing": 190.0, "flat_limit": 12.0, "attempts": 900},
+	{"type": "water_works", "biome": 0, "r_min": 255.0, "r_max": 790.0, "name": "Water Works", "radius": 42.0, "pad": 24.0, "spacing": 190.0, "flat_limit": 12.0, "attempts": 900},
 ]
 
 ## Extra-POI kits cycled through when a map preset requests more objectives.
@@ -150,10 +164,21 @@ const EXTRA_POI_KINDS := [
 	{"type": "relay_spire", "radius": 30.0, "pad": 16.0},
 	{"type": "ruin_field", "radius": 32.0, "pad": 18.0},
 	{"type": "derelict_ship", "radius": 46.0, "pad": 26.0},
+	{"type": "foundry_hall", "radius": 46.0, "pad": 26.0},
+	{"type": "hab_cluster", "radius": 44.0, "pad": 24.0},
+	{"type": "comms_array", "radius": 34.0, "pad": 20.0},
+	{"type": "fuel_depot", "radius": 44.0, "pad": 26.0},
+	{"type": "clinic_shelter", "radius": 38.0, "pad": 22.0},
+	{"type": "research_lab", "radius": 40.0, "pad": 24.0},
+	{"type": "water_works", "radius": 42.0, "pad": 24.0},
 ]
-const EXTRA_POI_FALLBACK_NAMES := ["Forward Camp", "Signal Relay", "Outer Ruins", "Wreck Site"]
-## Base POIs keep their authored 235 m spacing; preset extras accept 195 m so
-## they can still find room on an already populated frontier.
+const EXTRA_POI_FALLBACK_NAMES := [
+	"Forward Camp", "Signal Relay", "Outer Ruins", "Wreck Site",
+	"Foundry Spur", "Hab Ring", "Dish Field", "Fuel Spur",
+	"Field Station", "Lab Outpost", "Pump Station",
+]
+## Base POIs keep their authored 235 m spacing; the second-wave kits and preset
+## extras accept 195/190 m so they can still find room on a populated frontier.
 const DEFAULT_POI_SPACING := 235.0
 const EXTRA_POI_SPACING := 195.0
 const DEFAULT_ROADSIDE_TARGET := 14
@@ -331,6 +356,7 @@ func generate(world_seed: int) -> void:
 	_scatter_root = _make_root("Scatter")
 	var scatter = ScatterScript.new()
 	_stats["scatter"] = scatter.build(_scatter_root, self, _mats, world_seed, scatter_density)
+	_loot_props = scatter.get_loot_props()
 
 	# --- Environment --------------------------------------------------------
 	_emit_progress(0.82, "Lighting the sun")
@@ -382,6 +408,7 @@ func get_pois() -> Array[Dictionary]:
 			"type": String(poi.get("type", "poi")),
 			"name": String(poi.get("name", "POI")),
 			"radius": float(poi.get("radius", 30.0)),
+			"pad_radius": float(poi.get("pad_radius", float(poi.get("radius", 30.0)) * 0.6)),
 			"interior": poi.get("interior", {}),
 			"dungeon_anchor": poi.get("dungeon_anchor", null),
 		})
@@ -517,6 +544,32 @@ func get_path_segments() -> Array:
 
 func get_roadside_points() -> Array[Dictionary]:
 	return _roadside_points.duplicate(true)
+
+
+## POI-local clutter loot props produced by WorldScatter, ready for LootCache:
+## [{position: Vector3 (ground + prop height), kind: StringName, poi_index: int,
+##   poi_type: StringName}]. Empty before generation. Check `kind` against
+## LootCache's prop mix; `poi_type` resolves through POISpecs.get_spec() for
+## loot tier / biome context.
+func get_loot_props() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for prop in _loot_props:
+		out.append((prop as Dictionary).duplicate(true))
+	return out
+
+
+## Total decorative clutter instances (MultiMesh count) from the POI pass.
+func get_clutter_piece_count() -> int:
+	var scatter: Dictionary = _stats.get("scatter", {})
+	return int(scatter.get("clutter_instances", 0))
+
+
+## Road/path weight at a world position (0 away from roads, higher on them).
+## Used by POI-local clutter to keep props out of the driving lanes.
+func get_path_weight_at(world_xz: Vector2) -> float:
+	if _path_mask.is_empty():
+		return 0.0
+	return GenWorker.sample_scalar_grid(_path_mask, _grid_res, map_size, world_xz.x, world_xz.y)
 
 
 func get_terrain_root() -> Node3D:
@@ -656,6 +709,7 @@ func _clear_world() -> void:
 	_path_links.clear()
 	_path_segments.clear()
 	_roadside_points.clear()
+	_loot_props.clear()
 	_nav_stage = 0
 
 
@@ -880,9 +934,35 @@ func _place_poi_entry(entry: Dictionary, rng: RandomNumberGenerator) -> void:
 			best_score = score
 			best = p
 	if best.x == INF:
+		# Crowded frontier: retry with a relaxed footprint before falling back to
+		# a blind position, so the second-wave kits keep their authored clearance.
+		var relaxed := spacing * 0.72
+		var relaxed_max := minf(r_max, _half * 0.92)
+		for attempt in 420:
+			var ang := rng.randf() * TAU
+			var dist := rng.randf_range(r_min, maxf(r_min + 1.0, relaxed_max))
+			var p := Vector2(cos(ang) * dist, sin(ang) * dist)
+			var ok := true
+			for q in _poi_positions:
+				if p.distance_to(q) < relaxed:
+					ok = false
+					break
+			if not ok:
+				continue
+			for spawn in _spawn_info:
+				if p.distance_to(spawn["pos2"]) < 150.0:
+					ok = false
+					break
+			if not ok:
+				continue
+			best = p
+			_stats["poi_relaxed_placements"] = int(_stats.get("poi_relaxed_placements", 0)) + 1
+			break
+	if best.x == INF:
 		# Preset extras are best-effort; authored POIs always land via fallback.
 		if bool(entry.get("optional", false)):
 			return
+		_stats["poi_fallbacks"] = int(_stats.get("poi_fallbacks", 0)) + 1
 		best = Vector2(cos(rng.randf() * TAU) * (r_min + r_max) * 0.5, sin(rng.randf() * TAU) * (r_min + r_max) * 0.5)
 	_append_poi(String(entry["type"]), String(entry["name"]), best, float(entry["radius"]), float(entry["pad"]), rng)
 

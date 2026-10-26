@@ -1,0 +1,165 @@
+{
+    "schema":  1,
+    "pack_id":  "kenney_scifi_sounds",
+    "title":  "Kenney Sci-Fi Sounds",
+    "author":  "Kenney (kenney.nl)",
+    "uploader":  "Lopano",
+    "asset_library":  {
+                          "id":  1834,
+                          "version":  "1.0.2",
+                          "api_url":  "https://godotengine.org/asset-library/api/asset/1834",
+                          "page_url":  "https://godotengine.org/asset-library/asset/1834",
+                          "listed_license":  "CC0",
+                          "listed_download_status":  "dead",
+                          "listed_download_url":  "https://github.com/Loppansson/kenney-sci-fi-sounds-for-godot/archive/c094967fe930c57ddb376f67c75f8aa0296690b7.zip",
+                          "fetched_download_url":  "https://kenney.nl/media/pages/assets/sci-fi-sounds/6b296f9ecf-1677589334/kenney_sci-fi-sounds.zip"
+                      },
+    "source_kind":  "kenney.nl",
+    "source_url":  "https://kenney.nl/media/pages/assets/sci-fi-sounds/6b296f9ecf-1677589334/kenney_sci-fi-sounds.zip",
+    "commit":  null,
+    "archive_sha256":  "119340f351a5098ad814f78719438c0da355a9ce8a4c8a3af6a8d48aa3d49e04",
+    "archive_bytes":  5875104,
+    "license":  "CC0-1.0",
+    "license_file":  "res://assets/cc0/kenney_scifi_sounds/LICENSE.txt",
+    "license_copies":  [
+                           "res://assets/audio/cc0/kenney_scifi/LICENSE.txt"
+                       ],
+    "curated_root":  "res://assets/audio/cc0/kenney_scifi",
+    "file_count":  22,
+    "total_bytes":  1154508,
+    "generated_by":  "tools/fetch_asset_packs.ps1",
+    "files":  [
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/doorClose_000.ogg",
+                      "bytes":  20369,
+                      "sha256":  "c9134651ebbd7c016f90393aee495ff8120bd343bb7569b689a7506987ebd6c2",
+                      "source":  "Audio/doorClose_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/doorOpen_000.ogg",
+                      "bytes":  19616,
+                      "sha256":  "5b7e07eccd4413ad9ef3720c2d14f9cc699f4c50111e9b2f48bd60e6f1a164c3",
+                      "source":  "Audio/doorOpen_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/engineCircular_000.ogg",
+                      "bytes":  177470,
+                      "sha256":  "8ab85f9fa85e9e692287f98acb36b9ac3ba15313b007c039055e286b736f4e3a",
+                      "source":  "Audio/engineCircular_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/engineCircular_001.ogg",
+                      "bytes":  199100,
+                      "sha256":  "e1df3a942842a24f7c4056db3177e8008edd73d4f3985fd95f55362bc85058bc",
+                      "source":  "Audio/engineCircular_001.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/explosionCrunch_000.ogg",
+                      "bytes":  28274,
+                      "sha256":  "4b597d658d0ae101f0a030fbeea5fc3a4292ab85f017470a8254a8e7959cbd69",
+                      "source":  "Audio/explosionCrunch_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/explosionCrunch_001.ogg",
+                      "bytes":  47916,
+                      "sha256":  "fdd04d6f0032d4d57c134ad37f3587d2d00e58c9572715275bd8cf4f43593576",
+                      "source":  "Audio/explosionCrunch_001.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/explosionCrunch_002.ogg",
+                      "bytes":  47907,
+                      "sha256":  "be2b8ddc62e4a24c91e2e77793de98549ce216faf2f323a917e7d6f34321ff97",
+                      "source":  "Audio/explosionCrunch_002.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/forceField_000.ogg",
+                      "bytes":  25672,
+                      "sha256":  "c2916f2a062c8ddd1aca2826d134fe90847037db31342726ffb0f9097afe339c",
+                      "source":  "Audio/forceField_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/impactMetal_000.ogg",
+                      "bytes":  15491,
+                      "sha256":  "956c6612a256aa1a67a2327fffe2454f6b1d82e4c1c2be28fd66916335d5b1d6",
+                      "source":  "Audio/impactMetal_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/impactMetal_001.ogg",
+                      "bytes":  15305,
+                      "sha256":  "4a2b76f20052819c6ace57cc5ba55ec58deffcf74e3ed30694d619c582cc8e8e",
+                      "source":  "Audio/impactMetal_001.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/impactMetal_002.ogg",
+                      "bytes":  12708,
+                      "sha256":  "0c1bb4db8a4d48b2b8c2e65a175d9056b845f1063837599995d81be1c5957d2c",
+                      "source":  "Audio/impactMetal_002.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/laserLarge_000.ogg",
+                      "bytes":  25566,
+                      "sha256":  "a56d95794cd732d6c2d66ce488c14cf557fe526c282897c9a77675c2bd9b77e6",
+                      "source":  "Audio/laserLarge_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/laserLarge_001.ogg",
+                      "bytes":  26220,
+                      "sha256":  "e678aca631495b7dfef4ac625f0349875ccac81a60f538d530e072241af3e4bd",
+                      "source":  "Audio/laserLarge_001.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/laserLarge_002.ogg",
+                      "bytes":  27440,
+                      "sha256":  "e5e0b6ccc4d5720c8174a3e5b7cc6f9be3057352a89cbb2e99a00efc6fe5cc11",
+                      "source":  "Audio/laserLarge_002.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/laserRetro_000.ogg",
+                      "bytes":  12588,
+                      "sha256":  "2a203a007d24cc7e607eb8bec1d86bedba7f551911217ce2c4c1f31393aed32c",
+                      "source":  "Audio/laserRetro_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/laserSmall_000.ogg",
+                      "bytes":  7286,
+                      "sha256":  "72b589eadd41781257ac859e4f4d030222e623390e4a1a83f6d05329a6e026f1",
+                      "source":  "Audio/laserSmall_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/laserSmall_001.ogg",
+                      "bytes":  7448,
+                      "sha256":  "ab87913aba9790a0c5fa173d086267ba521ad522fcad2252271db49988313cf5",
+                      "source":  "Audio/laserSmall_001.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/laserSmall_002.ogg",
+                      "bytes":  8973,
+                      "sha256":  "e70139466c3e801358c9041ee17db7ff82c0e9a9cdf44647ad0ea6b9f8458f63",
+                      "source":  "Audio/laserSmall_002.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/lowFrequency_explosion_000.ogg",
+                      "bytes":  14317,
+                      "sha256":  "3cb48d86dab63140cfb9aaeea4d4a6846abaca5831d157d8adbec0490da26343",
+                      "source":  "Audio/lowFrequency_explosion_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/lowFrequency_explosion_001.ogg",
+                      "bytes":  9408,
+                      "sha256":  "cdda50600a4928f2f1b8371224d53c171ac799c1cf2c30b11999508985250b3b",
+                      "source":  "Audio/lowFrequency_explosion_001.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/thrusterFire_000.ogg",
+                      "bytes":  201216,
+                      "sha256":  "0fdc474d93f209debf1fc4ea77765a669dcb7676db31b4d8a0a509685bccf374",
+                      "source":  "Audio/thrusterFire_000.ogg"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_scifi/thrusterFire_001.ogg",
+                      "bytes":  204218,
+                      "sha256":  "924636edc923fe4aab5829b69dc5dc1c5d659dec5739865434dabee752a3bb79",
+                      "source":  "Audio/thrusterFire_001.ogg"
+                  }
+              ]
+}

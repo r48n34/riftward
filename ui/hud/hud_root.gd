@@ -12,6 +12,7 @@ const UIHudAimSightScript := preload("res://ui/hud/hud_aim_sight.gd")
 const MINIMAP_SIZE := 216.0
 const WORLD_EVENT_HOLD := 7.0
 const WORLD_EVENT_MAX_QUEUE := 4
+const VEHICLE_PANEL_PATH := "res://ui/hud/hud_vehicle.gd"
 
 var _player_ref: WeakRef = null
 var _bound_player: Node = null
@@ -110,6 +111,8 @@ var _interaction_key: Label = null
 var _boss_panel: PanelContainer = null
 var _boss_name: Label = null
 var _boss_bar: ProgressBar = null
+var _vehicle_panel: Control = null
+var _cinematic_mode := false
 var _downed_panel: PanelContainer = null
 var _bleedout_bar: ProgressBar = null
 var _bleedout_label: Label = null
@@ -1607,6 +1610,90 @@ func hide_boss() -> void:
 	_boss_active = false
 	if _boss_panel != null:
 		_boss_panel.visible = false
+
+
+# ---------------------------------------------------------------------------
+# Cinematics and rideables
+# ---------------------------------------------------------------------------
+
+## Strips the gameplay chrome while a cut-scene owns the view. Prior visibility
+## is remembered per control, so the boss bar does not pop back in after a shot
+## it was never part of.
+func set_cinematic_mode(active: bool) -> void:
+	if _cinematic_mode == active:
+		return
+	_cinematic_mode = active
+	for control in [
+		_weapon, _minimap, _crosshair, _compass, _scope, _vitals, _abilities,
+		_objective_panel, _timer_panel, _squad_panel, _interaction_panel,
+		_exfil_panel, _boss_panel, _tracker_box, _status_label, _downed_panel,
+	]:
+		if control == null or not is_instance_valid(control) or not (control is CanvasItem):
+			continue
+		var item := control as CanvasItem
+		if active:
+			item.set_meta("cinematic_was_visible", item.visible)
+			item.visible = false
+		else:
+			item.visible = bool(item.get_meta("cinematic_was_visible", item.visible))
+			item.remove_meta("cinematic_was_visible")
+
+
+func is_cinematic_mode() -> bool:
+	return _cinematic_mode
+
+
+## Rideable HUD: the vehicle panel is an optional component so the HUD keeps
+## working when features/vehicles is absent (unit tests, stripped builds).
+func show_vehicle(snapshot: Dictionary) -> void:
+	if not _ensure_vehicle_panel():
+		return
+	if _vehicle_panel.has_method("configure"):
+		_vehicle_panel.call("configure", snapshot)
+	if _vehicle_panel.has_method("show_panel"):
+		_vehicle_panel.call("show_panel")
+	(_vehicle_panel as CanvasItem).visible = true
+
+
+func update_vehicle(snapshot: Dictionary) -> void:
+	if _vehicle_panel == null or not is_instance_valid(_vehicle_panel) or snapshot.is_empty():
+		return
+	if _vehicle_panel.has_method("update_snapshot"):
+		_vehicle_panel.call("update_snapshot", snapshot)
+
+
+func hide_vehicle() -> void:
+	if _vehicle_panel == null or not is_instance_valid(_vehicle_panel):
+		return
+	if _vehicle_panel.has_method("hide_panel"):
+		_vehicle_panel.call("hide_panel")
+	(_vehicle_panel as CanvasItem).visible = false
+
+
+func get_vehicle_panel() -> Control:
+	return _vehicle_panel
+
+
+func _ensure_vehicle_panel() -> bool:
+	if _vehicle_panel != null and is_instance_valid(_vehicle_panel):
+		return true
+	if not ResourceLoader.exists(VEHICLE_PANEL_PATH):
+		return false
+	var script: Script = load(VEHICLE_PANEL_PATH)
+	if script == null:
+		return false
+	var instance = script.new()
+	if not (instance is Control):
+		if instance is Node:
+			(instance as Node).queue_free()
+		return false
+	_vehicle_panel = instance as Control
+	_vehicle_panel.name = "VehiclePanel"
+	_vehicle_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_anchored(_vehicle_panel, Control.PRESET_CENTER_BOTTOM, -230, -PANEL_PAD - 148, 230, -PANEL_PAD)
+	add_child(_vehicle_panel)
+	(_vehicle_panel as CanvasItem).visible = false
+	return true
 
 
 func _set_downed(is_downed: bool) -> void:

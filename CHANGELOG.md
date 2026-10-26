@@ -17,6 +17,195 @@ release bodies live in [docs/releases/](docs/releases/).
   one job per suite, then one stable `headless-tests gate` check — and `tests/run_all.ps1` reads the same
   manifest, so the badge and the local gate cannot drift apart again.
 
+## [0.3.0] - 2026-10-26
+
+Third public source release: **Sound & Motion**. Procedural audio grows into a full sound-and-music
+system, the frontier doubles its authored landmark vocabulary, rideables put the player on the ground and
+in the air, authored cut-scenes carry the run from insertion to exfil, and seven CC0 Kenney packs give
+impacts, UI, engines and particle effects real recorded/curated art — while all 3D geometry, materials
+and shaders remain procedural. Full engineering notes:
+[docs/DEVLOG.md#030--2026-10-26](docs/DEVLOG.md#030--2026-10-26).
+
+### Added
+
+**Audio Director 2.0**
+
+- `autoload/audio_director.gd` is now a slim facade over three new feature modules:
+  `features/audio/sfx_catalog.gd` (recipe table + PCM synthesis), `features/audio/music_director.gd`
+  (cues, stems, crossfade, worker generation) and `features/audio/audio_packs.gd` (CC0 override
+  resolver). Every pre-existing call site (`play_ui`, `play_sfx`, `play_3d`, `set_music_mood`,
+  `set_bus_volume`, `get_stream`, `get_ui_sound_ids`) keeps working.
+- **113 procedural SFX ids** (`AudioDirector.get_catalog().size() == 113`, recipes == 113 in the headless
+  audio suite) covering UI, ten weapon families plus tails, reload stages, hits/headshots/kills,
+  explosions, impacts, shields/armor, movement, ability/status effects, enemy vocals, bosses, weather,
+  ambience beds, vehicles, doors, pickups, build/upgrade, storms, extraction and cut-scene stings.
+- **Eight music cues plus `silent`** — `menu`, `hub`, `deploy`, `combat`, `boss`, `exfil`, `storm`,
+  `results` — each an authored chord-progression/tempo/stem mix rendered procedurally, with layered
+  pad/bass/pulse/percussion/texture stems, sample-continuous loop seams, a **two-player crossfade**
+  (`AudioDirector.set_music_track(track, fade := 1.6)`) and a `music_track_changed` signal. Music and
+  SFX sample generation runs on `WorkerThreadPool` tasks so the first frame only pays for bus/pool setup;
+  headless runs skip background batches and generate ids on demand.
+- **Bus routing**: `Music`, `SFX`, `UI`, `Ambience`, `Vehicles` plus an `AudioEffectLimiter` on `Master`
+  (threshold -3 dB, ceiling -0.3 dB). 2D/3D one-shot pools, an ambience bed with crossfade
+  (`set_ambience`), deterministic pitch/volume variation (`play_varied`), looped positional emitters
+  (`play_loop_3d`), and a `get_stats()` diagnostics snapshot.
+- Deployment owns a **music state machine** — exfil > boss > storm > combat > deploy — polled at 1 Hz;
+  menus/hub/loading keep their moods and cut-scene beats can override the bed for a beat.
+- **CC0 audio overrides**: `features/audio/audio_packs.gd` scans `res://assets/audio/cc0/**`, maps vendor
+  filename stems onto the logical ids (25 ids mapped across 188 curated files), and silently falls back
+  to the procedural synth for every missing/unimported file.
+
+**World: 20 POI types and a detail pass**
+
+- Seven new POI kits — `foundry_hall` (two-storey catwalk interior), `hab_cluster` (three enterable
+  modules), `comms_array` (dish farm), `fuel_depot` (tank farm), `clinic_shelter`, `research_lab` and
+  `water_works` — for **20 authored POI types** (13 original + 7 new). Each new kit authors 203–381
+  primitives (measured by the world suite; gate is >= 60) and at least one enterable interior.
+- Detail pass on all 13 original kits: interior furnishing, roof kits, pipes, cable trays, ladders,
+  railings, vents, signage, awnings, solar panels, water tanks and tarps.
+- **`POI_LAYOUT` grew to 21 authored entries** — 14 original layout entries plus the 7 new kits — and with
+  the **3 exfil pads** a default run now holds **24 base POIs**, up to **28** with preset extras.
+- **Enterable interiors**: 15 POIs on the base 24-POI layout (14 interior types, faction_camp twice); the
+  world-test preset reports **16** (its extra faction camp) and four preset extras can reach 17. Interior
+  spawn markers, `get_interior_pois()` and dungeon anchors are unchanged contracts.
+- **POI-local MultiMesh clutter**: barrels, crates, pallets, cable spools and debris in 5 batches,
+  20 pieces per POI (about **480 instances** at default density; 598 on the world-test preset), seeded
+  per POI and kept out of road lanes via the new path-weight query.
+- New `features/world/poi_specs.gd` (`class_name POISpecs`): a thread-safe, static **20-row data table**
+  (`all()`, `has_spec()`, `get_spec()`, `validate()`, `TYPE_IDS`, `VEHICLES`, `HAZARDS`) with
+  id/title/blurb/radius/pad/interior/loot_tier/garrison/hazard/biomes/vehicle/map_bias/codex_icon per
+  type. Consumers (loot, rideables, Codex, tactical UI) read the table instead of hard-coding kit names.
+- New public world getters: `get_loot_props()` (52 clutter anchors on the world-test preset),
+  `get_clutter_piece_count()`, `get_path_weight_at()`, and `get_pois()` now carries `pad_radius`.
+- World generation remains deterministic per seed (the world suite replays the seed and compares the
+  complete POI layout).
+
+**Content: cargo, loot tables and Codex**
+
+- **10 new salvage cargo items** in `ContentLibrary._items()`: Field Ration (Common, 18), Beacon Flare
+  (Common, 22), Alloy Plate (Uncommon, 28), Stim Injector (Uncommon, 32), Ammo Crate (Uncommon, 34),
+  Repair Kit (Rare, 52), Fuel Cell (Rare, 56), Map Intel (Rare, 68), Relic Shard (Epic, 84) and Trophy
+  Core (Prototype, 120), with heal/ammo/vehicle/salvage/relic effects and stack limits.
+- **3 loot tables** — `poi_common`, `poi_rare`, `vehicle_stash` — authored in `ContentLibrary` and rolled
+  by new `features/loot/loot_tables.gd`; `ContentDB` exposes `get_loot_table()`,
+  `get_loot_table_ids()`, `get_loot_tables()`, `get_loot_table_item_ids()`, `roll_loot_table()`,
+  `get_loot_table_for_poi()`, `get_loot_table_for_poi_dict()` and `build_loot_cache_payload()`.
+  POI `loot_tier` from `POISpecs` selects the table (tiers 3–4 roll `poi_rare`), `vehicle_stash` is only
+  selected explicitly, and unknown tables fall back to `poi_common`.
+- **7 POI Codex records** (the new second-wave sites) and **5 rideable Codex records**, surfaced through
+  `ContentDB.get_poi_codex()`/`get_poi_codex_entries()` and
+  `get_rideable_codex()`/`get_rideable_codex_entries()`, plus new Codex tabs **Sites** and **Rideables**.
+- Save format stays **v5** — the new content is catalog data, not new persistent fields.
+
+**Rideables**
+
+- Five rideable archetypes, all `CharacterBody3D` with a shared hand-rolled `VehiclePhysics` raycast
+  suspension/steering/thrust model (no `VehicleBody3D`, no imported vehicle physics):
+  - `rig` — Rift Rig: 2-seat ground car, 30 m/s, 340 hull, handbrake drift.
+  - `hoverbike` — Vale Hoverbike: single-seat hover, 38 m/s, 180 hull, leans into turns.
+  - `airplane` — Kestrel Wing: winged aircraft, 90 m/s with stall/takeoff airspeed.
+  - `spaceship` — Void Skiff: VTOL, 60 m/s, altitude clamp and auto-dock.
+  - `horse` — Warden Steed: gaits idle/walk/trot/canter/gallop with stamina and a bone-less gallop rig.
+- Mount/dismount on **E** (interact), `KEY_T` whistles the nearest steed (`Player._try_summon_ride()`),
+  weapons/abilities are locked while riding, the player keeps its own camera (reparented to the seat,
+  yaw/pitch local) and a vehicle HUD panel shows speed dial, name/kind, hull bar, boost or stamina and
+  gear/gait.
+- `features/vehicles/vehicle_sites.gd` (`VehicleSites.build()`) places rideables deterministically per
+  seed: one rig and one hoverbike at the drop zone, airplane/spaceship at their thematic POIs
+  (`comms_array`/`foundry_hall`/`derelict_ship`), horse at `warden_outpost`, with seed-derived fallback
+  placement if a POI is missing.
+- New physics layer **11 "Vehicle"**; engine/wind loops through `AudioDirector.play_loop_3d`, gait-timed
+  hoof/whinny audio for the horse, plus boost/brake/horn/impact/explosion SFX. Dungeon entry is blocked
+  while riding and the exfil cut-scene force-dismounts first.
+
+**Cut-scenes**
+
+- New `features/cutscene/cutscene_director.gd` (`CutsceneDirector`) and
+  `ui/screens/cinematic_overlay.gd` (`CinematicOverlay`) with **four registered cut-scenes**:
+  - `deployment` — 6 s drop-feed recap card (the live feed remains the upgraded LoadingScreen).
+  - `insertion` — 4 s in-world ramp-down / first-person rise / first radio traffic at run start.
+  - `exfil` — 6 s pad approach, Kestrel ramp, lift-off and fade, played **before** the run ends.
+  - `boss` — 4 s dossier + orbit confrontation shot, once per boss instance, skipped in training.
+- Data-driven beat timelines (duration/camera rail-orbit-fixed/caption/radio/sfx/music/hud), a **12 s
+  hard cap**, skip via Esc/Space/Enter and an on-screen button, a **1.2 s reduce-motion static card**
+  that carries every caption, HUD chrome strip/restore, `EventBus.cinematic_state_changed`, and
+  `App.play_cinematic()` / `App.is_cinematic()` ownership with a safe abort on teardown.
+- The deployment loading cinema gains a fifth act — `ui/components/cinema_insertion_shot.gd`
+  (`CinemaInsertionShot`) — and per-act audio stingers; the existing drop-feed acts are unchanged.
+
+**CC0 art and FX**
+
+- **Seven CC0 Kenney packs**, 267 curated files / 5.96 MiB, fetched and hashed by the new
+  `tools/fetch_asset_packs.ps1`: Particle Pack (43), Prototype Textures (20), Interface Sounds (18),
+  UI Audio (18), Sci-Fi Sounds (22), Impact Sounds (130) and Music Jingles (16), with per-pack
+  `LICENSE.txt` + `MANIFEST.json` under `assets/cc0/<pack>/`. Provenance: [docs/ASSET_PACKS.md](docs/ASSET_PACKS.md).
+- New `features/fx/particle_library.gd` (`ParticleLibrary`) with **14 logical effect ids** — `muzzle`,
+  `impact_metal`, `impact_dirt`, `explosion`, `dust`, `exhaust`, `sparks`, `splash`, `smoke`, `rain`,
+  `portal`, `scorch`, `flare`, `trail` — and a procedural soft-dot fallback when the pack is absent.
+- `features/combat/combat_vfx.gd` now spawns real particle art for muzzle flashes, impacts and
+  explosions (additive layer; primitives still render without the pack).
+
+**Tests**
+
+- `tests/suites.json` now lists **18 suites** — the 14 previous plus **audio**, **vehicles**,
+  **cutscenes** and **assets**. New suites cover the 113-id catalog/bus routing/track switching/CC0
+  fallback (280 checks), all five rideables/mount-dismount/sites/HUD (244 checks), the four cut-scene ids,
+  beats, skip, cap, reduce-motion and no-3D fallback (78 checks), and manifest/sha256/fallback/particle
+  behaviour for the CC0 packs (2,110 checks).
+
+### Changed
+
+- Project version is now `0.3.0` (`project.godot` `config/version`).
+- `AudioDirector` keeps its public signatures but now delegates to `features/audio/`; new IDs are
+  append-only and `has_stream()` should guard optional ids in gameplay code.
+- World counts move from 17–21 POIs to **24 base POIs (21 authored + 3 exfil pads), up to 28 with preset
+  extras**; `features/world/WORLD_API.md` and the docs now describe 20 POI types.
+- `get_pois()` dictionaries gain `pad_radius`; interior and dungeon-anchor contracts are unchanged.
+- Codex now has **Sites** and **Rideables** tabs in addition to the existing tabs.
+- README credits and `docs/THIRD_PARTY_NOTICES.md` now state the CC0 pack provenance honestly: all 3D
+  geometry/materials/shaders remain procedural, audio and particle/prototype textures include seven CC0
+  Kenney packs.
+
+### Fixed
+
+- **Real-boot inventory smoke blocked by the insertion cut-scene.** The `--inventory-smoke` harness
+  injected `I` while the new 4 s `insertion` shot owned gameplay input. `App._wait_for_gameplay()` now
+  waits out any running cinematic (14 s cap) before smoke input; the inventory and shooting smoke suites
+  both pass.
+- **Audio-resource leaks at exit.** AudioDirector now stops pooled/ambient voices and drops stream
+  references in `_exit_tree`, and teardown flushes the audio mix step for ~60 ms before freeing voices
+  (`AudioServer` only erases a stopped playback on the next mix step). This cleared the
+  `AudioStreamWAV`/`scratch_001.wav`, assets-RID and `ai`-suite Ogg leaks — all suites exit clean.
+- Audio and particle feedback no longer has to be synthesised at runtime for impacts/UI/engines: missing
+  CC0 files still degrade silently to the procedural fallback with no `push_error`/warning spam.
+- Vehicle placement never leaves a run without rideables: if a POI is missing, the specialist archetypes
+  fall back to deterministic drop-zone offsets; positions snap with a downward raycast and then
+  `WorldBuilder.sample_height()`.
+- Cut-scenes cannot soft-lock: every exit path (natural end, skip, abort, freed boss/player, scene
+  teardown) restores HUD/mouse/input, the director never dereferences a freed node, and the exfil shot
+  runs before `RunState.tick_extraction(0.0)` ends the run.
+
+### Testing
+
+- Suite manifest: **18 headless suites** (boot, shooting, inventory, integration, death, dungeon,
+  tutorial, world, world_variants, ai, companions, progression, ui, ui_icons, audio, vehicles, cutscenes,
+  assets). **The final 0.3.0 gate passes 18/18 (aggregate exit 0, 2026-10-26).** Check counts in this
+  release: audio 280, vehicles 244, cutscenes 78, assets 2,110, progression 975, ui 130, ui_icons 148,
+  integration 118, world (contract pass with 26 POIs / 16 interiors / 52 loot anchors / 598 clutter).
+- CLI/automation evidence and the per-suite table are recorded in [docs/QA_REPORT.md](docs/QA_REPORT.md).
+- `tests/run_all.ps1` still fails on `SCRIPT ERROR` and engine `ERROR:` lines, reads the suite list from
+  `tests/suites.json`, and writes logs to `tests/artifacts/logs/`.
+
+### Documentation
+
+- New [docs/ASSET_PACKS.md](docs/ASSET_PACKS.md) (pack provenance, dead Asset Library links, curation and
+  verification), plus the honest CC0 section in
+  [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) and in the README credits.
+- Rewritten/updated: [README.md](README.md), [docs/FEATURES.md](docs/FEATURES.md),
+  [docs/TECHNICAL.md](docs/TECHNICAL.md), [docs/DESIGN.md](docs/DESIGN.md),
+  [docs/QA_REPORT.md](docs/QA_REPORT.md), [docs/DEVLOG.md](docs/DEVLOG.md) and
+  [features/world/WORLD_API.md](features/world/WORLD_API.md).
+
 ## [0.2.0] - 2026-10-25
 
 Second public source release: the **Frontier Update** plus the **UI/content expansion**. Adds five

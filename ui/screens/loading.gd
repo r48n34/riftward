@@ -40,6 +40,10 @@ const ACTS := [
 ]
 const ACT_HARD_CAP := 2.6
 const CAPTION_CAP_WIDTH := 720.0
+## In-feed insert beat: the ramp-down/first-person-rise shot plays for this long
+## at the head of the TOUCHDOWN act. The act count stays four (ui_demo contract);
+## the insert is a shot, not an act.
+const INSERT_DURATION := 1.4
 
 var _brief: Dictionary = {}
 var _title_text := "Preparing the Reach"
@@ -47,6 +51,9 @@ var _title_text := "Preparing the Reach"
 var _cinema_host: Control = null
 var _shots: Dictionary = {}
 var _boss_shot: CinemaBossShot = null
+var _insert_shot: CinemaInsertionShot = null
+var _insert_active := false
+var _insert_elapsed := 0.0
 var _film: CinemaFilmOverlay = null
 var _flash: ColorRect = null
 var _caption_layer: Control = null
@@ -135,11 +142,14 @@ func _build_shots() -> void:
 	var descent := CinemaDescentShot.new()
 	var boss := CinemaBossShot.new()
 	var touchdown := CinemaTouchdownShot.new()
+	var insertion := CinemaInsertionShot.new()
 	_boss_shot = boss
+	_insert_shot = insertion
 	var entries := [
 		[&"rift", rift],
 		[&"descent", descent],
 		[&"boss", boss],
+		[&"insertion", insertion],
 		[&"touchdown", touchdown],
 	]
 	for entry in entries:
@@ -419,6 +429,8 @@ func update_loading(progress: float, label: String) -> void:
 func dismiss() -> void:
 	visible = false
 	set_process(false)
+	_insert_active = false
+	_insert_elapsed = 0.0
 	for shot in _shots.values():
 		if shot is UICinemaShot:
 			shot.set_active(false)
@@ -430,6 +442,7 @@ func skip_cinematic() -> void:
 	if _skipped or _static_mode:
 		return
 	_skipped = true
+	_insert_active = false
 	_enter_static_brief(false)
 	cinematic_skipped.emit()
 
@@ -490,6 +503,26 @@ func get_shot(shot_id: StringName) -> UICinemaShot:
 	return _shots.get(shot_id)
 
 
+## The in-feed insertion insert shot (ramp down / first-person rise).
+func get_insert_shot() -> UICinemaShot:
+	return _insert_shot
+
+
+func is_insert_active() -> bool:
+	return _insert_active
+
+
+## Id of the shot currently on screen (`&""` when the feed is between shots).
+func get_active_shot_id() -> StringName:
+	if _insert_active:
+		return &"insertion"
+	for shot_id in _shots.keys():
+		var shot: UICinemaShot = _shots[shot_id]
+		if shot != null and shot.is_shot_active():
+			return StringName(shot_id)
+	return &""
+
+
 func get_skip_button() -> Button:
 	return _skip_button
 
@@ -530,6 +563,9 @@ func _process(delta: float) -> void:
 		_refresh_timecode()
 	if _skipped or _static_mode or _frozen_for_capture:
 		return
+	if _insert_active:
+		_advance_insert(delta)
+		return
 	_maybe_advance_act()
 	_tip_accum += delta
 	if _tip_accum >= 6.0:
@@ -551,6 +587,8 @@ func _maybe_advance_act() -> void:
 func _enter_act(index: int, immediate: bool) -> void:
 	_act_index = clampi(index, 0, ACTS.size() - 1)
 	_act_elapsed = 0.0
+	_insert_active = false
+	_insert_elapsed = 0.0
 	var active: StringName = StringName(ACTS[_act_index]["id"])
 	for shot_id in _shots.keys():
 		var shot: UICinemaShot = _shots[shot_id]
@@ -567,11 +605,65 @@ func _enter_act(index: int, immediate: bool) -> void:
 	_play_act_sting(active)
 	if not immediate and not _static_mode and not _frozen_for_capture:
 		_flash_frame(_act_accent(active))
+		# The drop-feed insert: a short ramp-down/first-person-rise shot opens
+		# the TOUCHDOWN act when the feed reaches it naturally.
+		if active == &"touchdown" and _insert_shot != null:
+			_begin_insert()
+
+
+## Starts the in-feed insertion insert at the head of the touchdown act.
+func _begin_insert() -> void:
+	if _insert_shot == null or _insert_active:
+		return
+	_insert_active = true
+	_insert_elapsed = 0.0
+	for shot_id in _shots.keys():
+		var shot: UICinemaShot = _shots[shot_id]
+		shot.set_active(shot_id == &"insertion")
+	_insert_shot.set_progress(0.0)
+	_insert_shot.set_static_frame(_frozen_for_capture)
+	_act_eyebrow.text = "ACT 04 · INSERTION"
+	_act_eyebrow.add_theme_color_override("font_color", UIPalette.amber)
+	_caption_title.visible = true
+	_caption_sub.visible = true
+	_caption_title.text = "Ramp Down"
+	_caption_sub.text = "First-person rise  ·  boots on the Reach  ·  weapon hot"
+	_refresh_radio(3)
+	if _caption_box != null:
+		UIFactory.animate_in(_caption_box, 0.04)
+	_play_insert_sting()
+
+
+## Advances the insert; hands the frame to the touchdown shot when complete.
+func _advance_insert(delta: float) -> void:
+	_insert_elapsed += delta
+	var t := clampf(_insert_elapsed / INSERT_DURATION, 0.0, 1.0)
+	if _insert_shot != null:
+		_insert_shot.set_progress(t)
+	if _insert_elapsed >= INSERT_DURATION:
+		_end_insert()
+
+
+func _end_insert() -> void:
+	if not _insert_active:
+		return
+	_insert_active = false
+	_insert_elapsed = 0.0
+	for shot_id in _shots.keys():
+		var shot: UICinemaShot = _shots[shot_id]
+		shot.set_active(shot_id == &"touchdown")
+	_refresh_caption(&"touchdown")
+	_refresh_radio(3)
+	_refresh_progress_accent(&"touchdown")
+	if not _static_mode and not _frozen_for_capture:
+		_flash_frame(UIPalette.amber)
 
 
 func _enter_static_brief(from_present: bool) -> void:
 	_static_mode = true
 	_act_index = 0
+	_insert_active = false
+	_insert_elapsed = 0.0
 	for shot_id in _shots.keys():
 		var shot: UICinemaShot = _shots[shot_id]
 		shot.set_active(shot_id == &"boss")
@@ -591,6 +683,8 @@ func _enter_static_brief(from_present: bool) -> void:
 
 
 func _reset_shots() -> void:
+	_insert_active = false
+	_insert_elapsed = 0.0
 	for shot in _shots.values():
 		if shot is UICinemaShot:
 			shot.set_static_frame(_static_mode)
@@ -754,19 +848,54 @@ func _bind_brief() -> void:
 	_refresh_seed()
 
 
+## Per-act stinger. Every stream id is guarded so the feed keeps working while
+## the audio bank grows (the audio ids are authored in parallel).
 func _play_act_sting(active: StringName) -> void:
-	if AudioDirector == null:
-		return
 	match active:
 		&"rift":
-			AudioDirector.play_sfx(&"storm", -18.0)
+			_play_sfx(&"wind_loop", -20.0)
+			_play_sfx(&"storm", -18.0)
+			_play_ui(&"radio_chirp", -18.0)
 		&"descent":
-			AudioDirector.play_ui(&"scan", -10.0)
+			_play_ui(&"scan", -10.0)
+			_play_sfx(&"ramp_hiss", -14.0)
+			_play_sfx(&"wind_loop", -24.0)
 		&"boss":
-			AudioDirector.play_sfx(&"storm", -12.0)
-			AudioDirector.play_ui(&"ui_error", -12.0)
+			_play_sfx(&"boss_stinger", -10.0)
+			_play_sfx(&"storm", -12.0)
+			_play_ui(&"ui_error", -12.0)
 		&"touchdown":
-			AudioDirector.play_ui(&"ui_confirm", -6.0)
+			_play_ui(&"ui_confirm", -6.0)
+			_play_sfx(&"insertion_thud", -10.0)
+
+
+## Ramp-down insert: hydraulic hiss, the pod's thud, then a radio chirp.
+func _play_insert_sting() -> void:
+	_play_sfx(&"ramp_hiss", -12.0)
+	_play_sfx(&"insertion_thud", -10.0)
+	_play_ui(&"radio_chirp", -12.0)
+
+
+func _audio_has_stream(stream_id: StringName) -> bool:
+	if stream_id == &"" or AudioDirector == null:
+		return false
+	if AudioDirector.has_method("has_stream"):
+		return bool(AudioDirector.call("has_stream", stream_id))
+	if AudioDirector.has_method("get_stream"):
+		return AudioDirector.call("get_stream", stream_id) != null
+	return false
+
+
+func _play_sfx(stream_id: StringName, volume_db: float) -> void:
+	if not _audio_has_stream(stream_id):
+		return
+	AudioDirector.play_sfx(stream_id, volume_db)
+
+
+func _play_ui(stream_id: StringName, volume_db: float) -> void:
+	if not _audio_has_stream(stream_id):
+		return
+	AudioDirector.play_ui(stream_id, volume_db)
 
 
 func _flash_frame(color: Color) -> void:

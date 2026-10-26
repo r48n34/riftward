@@ -26,6 +26,10 @@ static func build() -> Dictionary:
 		"mutators": _mutators(),
 		"grenades": _grenades(),
 		"item_templates": _item_templates(),
+		"items": _items(),
+		"loot_tables": _loot_tables(),
+		"poi_codex": _poi_codex(),
+		"rideable_codex": _rideable_codex(),
 		"cosmetics": _cosmetics(),
 		"affixes": _affixes(),
 		"perks": _perks(),
@@ -1581,6 +1585,235 @@ static func _item_templates() -> Array:
 	for def in defs:
 		list.append(_apply(ItemTemplate.new(), def))
 	return list
+
+
+## Salvage cargo rolled from the loot tables. These are never equipped: they are
+## recovered into the satchel, banked into the locker and sold/scrapped. `value`
+## is the Common-rarity base, so the effective worth follows StatKeys.RARITY_MULT
+## exactly like gear and weapons do (field ration 18 -> trophy core 194).
+static func _items() -> Array:
+	var list: Array = []
+	var defs: Array[Dictionary] = [
+		{"id": &"field_ration", "display_name": "Field Ration", "category": &"consumable",
+			"rarity": 0, "icon": &"heart", "value": 18, "stack_max": 3,
+			"description": "Vacuum-sealed protein brick with a chalky electrolyte paste. Tastes like the inside of a helmet, keeps a Warden walking.",
+			"effects": {"heal": 25.0}, "tags": PackedStringArray(["consumable", "heal"]),
+			"color": Color("a7b4b6")},
+		{"id": &"stim_injector", "display_name": "Stim Injector", "category": &"consumable",
+			"rarity": 1, "icon": &"heart-pulse", "value": 32, "stack_max": 2,
+			"description": "Single-use combat stim in a cracked glass ampoule. The Reach's answer to a bad ten seconds.",
+			"effects": {"heal": 60.0, "stim_duration": 8.0, "move_speed": 0.15},
+			"tags": PackedStringArray(["consumable", "heal", "speed"]), "color": Color("63e6c3")},
+		{"id": &"ammo_crate", "display_name": "Ammo Crate", "category": &"consumable",
+			"rarity": 1, "icon": &"ammo", "value": 34, "stack_max": 2,
+			"description": "Stamped case of mixed rounds and a reload strip. Enough to keep a firefight going one more push.",
+			"effects": {"ammo_fraction": 0.35}, "tags": PackedStringArray(["consumable", "ammo"]),
+			"color": Color("63e6c3")},
+		{"id": &"repair_kit", "display_name": "Repair Kit", "category": &"material",
+			"rarity": 2, "icon": &"refresh", "value": 52, "stack_max": 2,
+			"description": "Field welder, patch tape and a spool of alloy wire. Gets a rig rolling again or a plate back on.",
+			"effects": {"vehicle_repair": 80.0, "armor_repair": 15.0},
+			"tags": PackedStringArray(["vehicle", "repair"]), "color": Color("6fa8ff")},
+		{"id": &"fuel_cell", "display_name": "Fuel Cell", "category": &"material",
+			"rarity": 2, "icon": &"bolt", "value": 56, "stack_max": 2,
+			"description": "Sealed hydrogen cell with a slow green telltale. Rideables drink these; so does the exfil dropship.",
+			"effects": {"vehicle_fuel": 0.5}, "tags": PackedStringArray(["vehicle", "fuel"]),
+			"color": Color("6fa8ff")},
+		{"id": &"alloy_plate", "display_name": "Alloy Plate", "category": &"material",
+			"rarity": 1, "icon": &"layers", "value": 28, "stack_max": 3,
+			"description": "Pre-cut plate from a hull that lost an argument. Scavengers trade these by the stack.",
+			"effects": {"armor": 4.0}, "tags": PackedStringArray(["salvage", "material"]),
+			"color": Color("63e6c3")},
+		{"id": &"relic_shard", "display_name": "Relic Shard", "category": &"relic",
+			"rarity": 3, "icon": &"core", "value": 84, "stack_max": 1,
+			"description": "A thumb of frozen rift-light that hums when the Collapse stirs. The Choir pays handsomely for these.",
+			"effects": {"ability_power": 0.08, "rift_resist": 0.1},
+			"tags": PackedStringArray(["rift", "relic"]), "color": Color("c79cff")},
+		{"id": &"map_intel", "display_name": "Map Intel", "category": &"intel",
+			"rarity": 2, "icon": &"map", "value": 68, "stack_max": 1,
+			"description": "A laminated survey slate scrawled with cache bearings. The previous owner never made it back.",
+			"effects": {"reveal_pois": 1}, "tags": PackedStringArray(["intel", "navigation"]),
+			"color": Color("6fa8ff")},
+		{"id": &"beacon_flare", "display_name": "Beacon Flare", "category": &"consumable",
+			"rarity": 0, "icon": &"exfil", "value": 22, "stack_max": 3,
+			"description": "Handheld signal flare in a waxed tube. Burn it when you need the dropship to find you.",
+			"effects": {"mark_extraction": 1}, "tags": PackedStringArray(["signal", "extraction"]),
+			"color": Color("a7b4b6")},
+		{"id": &"trophy_core", "display_name": "Trophy Core", "category": &"trophy",
+			"rarity": 4, "icon": &"trophy", "value": 120, "stack_max": 1,
+			"description": "The pulsing command core of something that used to be in charge. Proof, currency and a warning.",
+			"effects": {"luck": 0.1, "salvage_bonus": 0.15},
+			"tags": PackedStringArray(["trophy", "luck"]), "color": Color("ffc16b")},
+	]
+	for def in defs:
+		list.append(_apply(LootItemData.new(), def))
+	return list
+
+
+## Weighted loot tables. `salvage` is the salvage band granted alongside the roll,
+## `cores_chance` the extra core drop chance, `rarity_floor` the minimum generated
+## rarity, and every entry points at a loot item, gear template or weapon id.
+## LootTables (features/loot) owns the rolling; ContentDB validates the references.
+static func _loot_tables() -> Array:
+	return [
+		{
+			"id": &"poi_common", "display_name": "Common POI Cache", "label": "Salvage Cache",
+			"prompt": "E — Breach cache", "salvage": [16, 38], "cores_chance": 0.06,
+			"rarity_floor": 0,
+			"entries": [
+				{"id": &"field_ration", "weight": 22.0, "amount": [1, 2]},
+				{"id": &"beacon_flare", "weight": 14.0, "amount": [1, 2]},
+				{"id": &"ammo_crate", "weight": 14.0, "amount": [1, 2]},
+				{"id": &"alloy_plate", "weight": 14.0, "amount": [1, 3]},
+				{"id": &"stim_injector", "weight": 8.0},
+				{"id": &"repair_kit", "weight": 5.0},
+				{"id": &"map_intel", "weight": 4.0},
+				{"id": &"fuel_cell", "weight": 3.0},
+				{"id": &"vanguard_helm", "kind": &"gear", "weight": 4.0},
+				{"id": &"pathfinder_visor", "kind": &"gear", "weight": 3.0},
+				{"id": &"engineer_legs", "kind": &"gear", "weight": 3.0},
+				{"id": &"striders", "kind": &"gear", "weight": 3.0},
+				{"id": &"core_charm", "kind": &"gear", "weight": 3.0},
+				{"id": &"scavenger_tag", "kind": &"gear", "weight": 3.0},
+				{"id": &"ghost_chest", "kind": &"gear", "weight": 2.0},
+				{"id": &"storm_cloak", "kind": &"gear", "weight": 2.0},
+				{"id": &"sidewinder", "kind": &"weapon", "weight": 4.0},
+				{"id": &"wisp_smg", "kind": &"weapon", "weight": 4.0},
+				{"id": &"lattice_ar", "kind": &"weapon", "weight": 2.0},
+			],
+		},
+		{
+			"id": &"poi_rare", "display_name": "Rare POI Cache", "label": "Rare Cache",
+			"prompt": "E — Breach sealed cache", "salvage": [45, 90], "cores_chance": 0.18,
+			"rarity_floor": 1,
+			"entries": [
+				{"id": &"relic_shard", "weight": 10.0},
+				{"id": &"trophy_core", "weight": 3.0},
+				{"id": &"map_intel", "weight": 12.0},
+				{"id": &"repair_kit", "weight": 12.0},
+				{"id": &"fuel_cell", "weight": 10.0},
+				{"id": &"stim_injector", "weight": 10.0},
+				{"id": &"ammo_crate", "weight": 8.0},
+				{"id": &"alloy_plate", "weight": 6.0},
+				{"id": &"field_ration", "weight": 4.0},
+				{"id": &"aegis_chest", "kind": &"gear", "weight": 5.0},
+				{"id": &"ghost_chest", "kind": &"gear", "weight": 4.0},
+				{"id": &"reactive_cloak", "kind": &"gear", "weight": 4.0},
+				{"id": &"storm_cloak", "kind": &"gear", "weight": 4.0},
+				{"id": &"vanguard_helm", "kind": &"gear", "weight": 3.0},
+				{"id": &"striders", "kind": &"gear", "weight": 2.0},
+				{"id": &"longview_dmr", "kind": &"weapon", "weight": 5.0},
+				{"id": &"wisp_smg", "kind": &"weapon", "weight": 4.0},
+				{"id": &"sable_rail", "kind": &"weapon", "weight": 3.0},
+				{"id": &"bloom_carbine", "kind": &"weapon", "weight": 3.0},
+			],
+		},
+		{
+			"id": &"vehicle_stash", "display_name": "Vehicle Stash", "label": "Vehicle Stash",
+			"prompt": "E — Search vehicle stash", "salvage": [30, 70], "cores_chance": 0.12,
+			"rarity_floor": 1,
+			"entries": [
+				{"id": &"fuel_cell", "weight": 24.0, "amount": [1, 2]},
+				{"id": &"repair_kit", "weight": 20.0, "amount": [1, 2]},
+				{"id": &"alloy_plate", "weight": 14.0, "amount": [1, 3]},
+				{"id": &"ammo_crate", "weight": 10.0},
+				{"id": &"beacon_flare", "weight": 8.0},
+				{"id": &"field_ration", "weight": 6.0},
+				{"id": &"stim_injector", "weight": 6.0},
+				{"id": &"relic_shard", "weight": 2.0},
+				{"id": &"engineer_legs", "kind": &"gear", "weight": 4.0},
+				{"id": &"striders", "kind": &"gear", "weight": 3.0},
+				{"id": &"core_charm", "kind": &"gear", "weight": 3.0},
+				{"id": &"sidewinder", "kind": &"weapon", "weight": 3.0},
+				{"id": &"wisp_smg", "kind": &"weapon", "weight": 3.0},
+				{"id": &"ripper_smg", "kind": &"weapon", "weight": 2.0},
+			],
+		},
+	]
+
+
+## Codex records for the seven POI kits added in 0.3.0. These are the fallbacks:
+## ContentDB overlays live POISpecs.get_spec() fields (title/blurb/loot_tier/...)
+## when features/world/poi_specs.gd exists, but the Codex tab must stay useful
+## (and testable) before that file lands.
+static func _poi_codex() -> Array:
+	return [
+		{"id": &"foundry_hall", "display_name": "Foundry Hall", "category": &"poi",
+			"icon": &"outpost", "color": Color("ffb866"), "loot_tier": &"rare",
+			"loot_table": &"poi_rare", "radius": 52.0, "interior": true, "hazard": &"heat",
+			"biomes": PackedStringArray(["ashen"]), "vehicle": &"airplane",
+			"tags": PackedStringArray(["industrial", "indoor", "loot"]),
+			"blurb": "Two storeys of catwalks over a cold furnace line. Ashen crews smelt salvaged hulls here, and the heat signatures never quite leave."},
+		{"id": &"hab_cluster", "display_name": "Hab Cluster", "category": &"poi",
+			"icon": &"home", "color": Color("62e6c3"), "loot_tier": &"common",
+			"loot_table": &"poi_common", "radius": 44.0, "interior": true, "hazard": &"none",
+			"biomes": PackedStringArray(["verdant"]), "vehicle": &"",
+			"tags": PackedStringArray(["shelter", "indoor", "loot"]),
+			"blurb": "Three sealed hab modules around a shared courtyard. Beds, lockers and someone's abandoned laundry; good odds on a ration or a beacon."},
+		{"id": &"comms_array", "display_name": "Comms Array", "category": &"poi",
+			"icon": &"radio", "color": Color("6fa8ff"), "loot_tier": &"rare",
+			"loot_table": &"poi_rare", "radius": 46.0, "interior": false, "hazard": &"rift",
+			"biomes": PackedStringArray(["glass"]), "vehicle": &"spaceship",
+			"tags": PackedStringArray(["signal", "uplink", "elite"]),
+			"blurb": "A hillside of dishes and cable runs still pointed at a sky that stopped answering. The uplink draws elites and dropship traffic."},
+		{"id": &"fuel_depot", "display_name": "Fuel Depot", "category": &"poi",
+			"icon": &"bolt", "color": Color("ffb866"), "loot_tier": &"common",
+			"loot_table": &"poi_common", "radius": 48.0, "interior": false, "hazard": &"heat",
+			"biomes": PackedStringArray(["ashen"]), "vehicle": &"rig",
+			"tags": PackedStringArray(["fuel", "vehicle", "loot"]),
+			"blurb": "A tank farm and pump gantry ringed by barriers. Rideables refuel here; so does anything that wants to leave the Reach."},
+		{"id": &"clinic_shelter", "display_name": "Clinic Shelter", "category": &"poi",
+			"icon": &"shield-check", "color": Color("62e6c3"), "loot_tier": &"rare",
+			"loot_table": &"poi_rare", "radius": 40.0, "interior": true, "hazard": &"none",
+			"biomes": PackedStringArray(["verdant"]), "vehicle": &"",
+			"tags": PackedStringArray(["medical", "indoor", "shelter"]),
+			"blurb": "A pre-fab aid station with beds, med lockers and a triage board. Stims and repair kits are the usual take; the beds are a safe breather."},
+		{"id": &"research_lab", "display_name": "Research Lab", "category": &"poi",
+			"icon": &"search", "color": Color("c79cff"), "loot_tier": &"rare",
+			"loot_table": &"poi_rare", "radius": 42.0, "interior": true, "hazard": &"rift",
+			"biomes": PackedStringArray(["glass"]), "vehicle": &"",
+			"tags": PackedStringArray(["science", "indoor", "relic"]),
+			"blurb": "Glass labs and humming server stacks on the rift's doorstep. Whoever ran it left in a hurry; their intel and relic shards did not."},
+		{"id": &"water_works", "display_name": "Water Works", "category": &"poi",
+			"icon": &"water", "color": Color("63b8ff"), "loot_tier": &"common",
+			"loot_table": &"poi_common", "radius": 50.0, "interior": true, "hazard": &"none",
+			"biomes": PackedStringArray(["verdant"]), "vehicle": &"",
+			"tags": PackedStringArray(["utility", "catwalk", "loot"]),
+			"blurb": "Settling tanks, pipe galleries and catwalks over still water. Choir patrols like the acoustics; the catwalks make a clean sightline."},
+	]
+
+
+## Codex records for the five rideable archetypes. Same contract as the POI
+## records: authored fields are the fallback, ContentDB overlays the live vehicle
+## spec (name/kind/seats/max_speed/...) when the vehicles feature is present.
+static func _rideable_codex() -> Array:
+	return [
+		{"id": &"rig", "display_name": "Rig", "category": &"rideable", "kind": &"ground",
+			"icon": &"grid", "color": Color("ffb866"), "seats": 3, "max_speed": 92.0,
+			"health": 520.0, "stash_table": &"vehicle_stash",
+			"tags": PackedStringArray(["ground", "squad", "cargo"]),
+			"blurb": "Multi-seat field rig with a cargo bed and a stubborn diesel growl. Slow, but it carries a squad and their satchels."},
+		{"id": &"hoverbike", "display_name": "Hoverbike", "category": &"rideable", "kind": &"hover",
+			"icon": &"bolt", "color": Color("62e6c3"), "seats": 1, "max_speed": 128.0,
+			"health": 260.0, "stash_table": &"vehicle_stash",
+			"tags": PackedStringArray(["hover", "solo", "fast"]),
+			"blurb": "Single-seat hover sled that trades armour for speed. Perfect for crossing the Reach before the storm eats it."},
+		{"id": &"spaceship", "display_name": "Spaceship", "category": &"rideable", "kind": &"air",
+			"icon": &"rocket", "color": Color("6fa8ff"), "seats": 2, "max_speed": 210.0,
+			"health": 380.0, "stash_table": &"vehicle_stash",
+			"tags": PackedStringArray(["air", "orbital", "exfil"]),
+			"blurb": "Short-hop orbital shuttle on the comms pads. Fast, loud, and the only ride that makes the exfil queue feel optional."},
+		{"id": &"airplane", "display_name": "Airplane", "category": &"rideable", "kind": &"air",
+			"icon": &"exfil", "color": Color("c79cff"), "seats": 2, "max_speed": 170.0,
+			"health": 300.0, "stash_table": &"vehicle_stash",
+			"tags": PackedStringArray(["air", "scout", "stol"]),
+			"blurb": "STOL bush plane with a patched wing. The foundry pads keep one fuelled for a fast low pass over the map."},
+		{"id": &"horse", "display_name": "Horse", "category": &"rideable", "kind": &"mount",
+			"icon": &"paw", "color": Color("d28b58"), "seats": 1, "max_speed": 64.0,
+			"health": 220.0, "stash_table": &"vehicle_stash",
+			"tags": PackedStringArray(["mount", "terrain", "warden"]),
+			"blurb": "Warden outpost stock: a steady mount that climbs terrain no wheeled rig will touch, and refuses to enter the under-reach."},
+	]
 
 
 static func _cosmetics() -> Array:

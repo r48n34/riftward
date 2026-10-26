@@ -1,0 +1,141 @@
+{
+    "schema":  1,
+    "pack_id":  "kenney_interface_sounds",
+    "title":  "Kenney Interface Sounds",
+    "author":  "Kenney (kenney.nl)",
+    "uploader":  "Calinou",
+    "asset_library":  {
+                          "id":  794,
+                          "version":  "1.0.0",
+                          "api_url":  "https://godotengine.org/asset-library/api/asset/794",
+                          "page_url":  "https://godotengine.org/asset-library/asset/794",
+                          "listed_license":  "CC0",
+                          "listed_download_status":  "ok",
+                          "listed_download_url":  "https://codeload.github.com/Calinou/kenney-interface-sounds/zip/ad144fc2dd079cdd728bc8c7fcf9c4e64a7a7f83",
+                          "fetched_download_url":  "https://codeload.github.com/Calinou/kenney-interface-sounds/zip/ad144fc2dd079cdd728bc8c7fcf9c4e64a7a7f83"
+                      },
+    "source_kind":  "github-archive",
+    "source_url":  "https://codeload.github.com/Calinou/kenney-interface-sounds/zip/ad144fc2dd079cdd728bc8c7fcf9c4e64a7a7f83",
+    "commit":  "ad144fc2dd079cdd728bc8c7fcf9c4e64a7a7f83",
+    "archive_sha256":  "b16eae0e3ebf7c129b1de49dc574e1a10b896d939259a6ac993c8d9d2eee8b62",
+    "archive_bytes":  1734131,
+    "license":  "CC0-1.0",
+    "license_file":  "res://assets/cc0/kenney_interface_sounds/LICENSE.txt",
+    "license_copies":  [
+                           "res://assets/audio/cc0/kenney_interface/LICENSE.txt"
+                       ],
+    "curated_root":  "res://assets/audio/cc0/kenney_interface",
+    "file_count":  18,
+    "total_bytes":  384508,
+    "generated_by":  "tools/fetch_asset_packs.ps1",
+    "files":  [
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/back_001.wav",
+                      "bytes":  6094,
+                      "sha256":  "6fb44d6dc1fd0bbc1e7abb586bab4a838719f91428af2648a37d4acdc7530617",
+                      "source":  "addons/kenney_interface_sounds/back_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/click_001.wav",
+                      "bytes":  10190,
+                      "sha256":  "ea67c9d78750e5a356bf53ef8c2063b52cc3ccdae6ae8afeec87f97f79ae692d",
+                      "source":  "addons/kenney_interface_sounds/click_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/click_002.wav",
+                      "bytes":  1102,
+                      "sha256":  "3ebdb096e13b11d2ff1383e035847acb6a70e159edfb06bc94d59cbe40b1b713",
+                      "source":  "addons/kenney_interface_sounds/click_002.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/click_003.wav",
+                      "bytes":  1742,
+                      "sha256":  "b035afe3fe08b0fd3517c612bdfd362799bffe762d2cbf8f09e6a50322067358",
+                      "source":  "addons/kenney_interface_sounds/click_003.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/close_001.wav",
+                      "bytes":  13134,
+                      "sha256":  "423ae3dd2981045649bed82653e43f9770c2baad6da7582d004f9161ef9b0439",
+                      "source":  "addons/kenney_interface_sounds/close_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/confirmation_001.wav",
+                      "bytes":  26062,
+                      "sha256":  "f9d0ef5a5c740c2ac250ac3876db9e4340669044a5bf78ae09192918db3e2ebc",
+                      "source":  "addons/kenney_interface_sounds/confirmation_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/confirmation_002.wav",
+                      "bytes":  49614,
+                      "sha256":  "b23339f3fdcd9f54520ca73caa3a9ae93ecfb3675acdaf1468990feb5d55d5fa",
+                      "source":  "addons/kenney_interface_sounds/confirmation_002.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/drop_001.wav",
+                      "bytes":  23374,
+                      "sha256":  "0aa0b07692c5d37177f078c39d246d12f2685b553ed06887671797737e5cd432",
+                      "source":  "addons/kenney_interface_sounds/drop_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/error_001.wav",
+                      "bytes":  30542,
+                      "sha256":  "d77546b0baa89f37eca6b86f59b54a654ce5afe3d5a73492d0963168cc4ab5bf",
+                      "source":  "addons/kenney_interface_sounds/error_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/glass_001.wav",
+                      "bytes":  25806,
+                      "sha256":  "39182b395a30b34e18cbcf842922552b23da5b010a52b7777557e02a405f083e",
+                      "source":  "addons/kenney_interface_sounds/glass_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/open_001.wav",
+                      "bytes":  13134,
+                      "sha256":  "c69aab75d09d98363934c68cda0e9d050973eb5c3ab9987ce8fd5d336a8f7fbd",
+                      "source":  "addons/kenney_interface_sounds/open_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/pluck_001.wav",
+                      "bytes":  19790,
+                      "sha256":  "7d676b0b09b56f7e5964ad274feb7e7307a4e552bed8cd98e1e3cecfb9c10c36",
+                      "source":  "addons/kenney_interface_sounds/pluck_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/scratch_001.wav",
+                      "bytes":  14286,
+                      "sha256":  "8db53f023af3410573861dc7b434a052965b6282573b999af17e31d23557d7d2",
+                      "source":  "addons/kenney_interface_sounds/scratch_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/select_001.wav",
+                      "bytes":  11086,
+                      "sha256":  "3d9e86003f8ebd1a3f6f3d8af65b6b682562a46d532ccd204dcba21305b950ff",
+                      "source":  "addons/kenney_interface_sounds/select_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/select_002.wav",
+                      "bytes":  11086,
+                      "sha256":  "9f15b5f93716a3ff8842cff73ef932e81beac2d19972066f690154c1f9322f2b",
+                      "source":  "addons/kenney_interface_sounds/select_002.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/switch_001.wav",
+                      "bytes":  109390,
+                      "sha256":  "56a1dd5278d06b4c47c69d7664482bcb3feeac3027fdd8cb6d0883fda7738eb2",
+                      "source":  "addons/kenney_interface_sounds/switch_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/tick_001.wav",
+                      "bytes":  4046,
+                      "sha256":  "fee217e21731da4be1f0347fd2632296259b8bfdca343c936fe60dc64bce280e",
+                      "source":  "addons/kenney_interface_sounds/tick_001.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_interface/toggle_001.wav",
+                      "bytes":  14030,
+                      "sha256":  "100585c697b2b25a5d22c27e5758648ead9714f51eacb455b5bc0a1c9e1365db",
+                      "source":  "addons/kenney_interface_sounds/toggle_001.wav"
+                  }
+              ]
+}

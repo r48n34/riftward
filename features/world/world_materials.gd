@@ -194,6 +194,20 @@ func _build_materials() -> void:
 	lamp.vertex_color_use_as_albedo = true
 	mats[&"lamp"] = lamp
 
+	# --- POI clutter (barrels / crates / pallets / spools / debris) ---------
+	# Instanced props tint their material per instance, so clutter reuses one
+	# material and stays at a handful of draw calls across the whole map.
+	var clutter := StandardMaterial3D.new()
+	clutter.albedo_texture = detail_soft
+	clutter.texture_repeat = true
+	clutter.uv1_triplanar = true
+	clutter.uv1_scale = Vector3(1.1, 1.1, 1.1)
+	clutter.vertex_color_use_as_albedo = true
+	clutter.roughness = 0.78
+	clutter.metallic = 0.10
+	clutter.metallic_specular = 0.32
+	mats[&"clutter"] = clutter
+
 
 
 

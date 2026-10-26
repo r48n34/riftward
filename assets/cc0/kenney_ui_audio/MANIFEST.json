@@ -1,0 +1,141 @@
+{
+    "schema":  1,
+    "pack_id":  "kenney_ui_audio",
+    "title":  "Kenney UI Audio",
+    "author":  "Kenney (kenney.nl)",
+    "uploader":  "Calinou",
+    "asset_library":  {
+                          "id":  796,
+                          "version":  "1.0.0",
+                          "api_url":  "https://godotengine.org/asset-library/api/asset/796",
+                          "page_url":  "https://godotengine.org/asset-library/asset/796",
+                          "listed_license":  "CC0",
+                          "listed_download_status":  "ok",
+                          "listed_download_url":  "https://codeload.github.com/Calinou/kenney-ui-audio/zip/b80d045f07d782cd9068f7071fb1e7873a0de04d",
+                          "fetched_download_url":  "https://codeload.github.com/Calinou/kenney-ui-audio/zip/b80d045f07d782cd9068f7071fb1e7873a0de04d"
+                      },
+    "source_kind":  "github-archive",
+    "source_url":  "https://codeload.github.com/Calinou/kenney-ui-audio/zip/b80d045f07d782cd9068f7071fb1e7873a0de04d",
+    "commit":  "b80d045f07d782cd9068f7071fb1e7873a0de04d",
+    "archive_sha256":  "d9ec357eeda20773f529693190660fa3b0f8a651a21a1c0c5703bb0b0cd2567f",
+    "archive_bytes":  1700875,
+    "license":  "CC0-1.0",
+    "license_file":  "res://assets/cc0/kenney_ui_audio/LICENSE.txt",
+    "license_copies":  [
+                           "res://assets/audio/cc0/kenney_ui/LICENSE.txt"
+                       ],
+    "curated_root":  "res://assets/audio/cc0/kenney_ui",
+    "file_count":  18,
+    "total_bytes":  539516,
+    "generated_by":  "tools/fetch_asset_packs.ps1",
+    "files":  [
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/click1.wav",
+                      "bytes":  18254,
+                      "sha256":  "dd90b97f38b0ec7d52161d7c3bf8d61a66655766fd0af06439963351b4853a83",
+                      "source":  "addons/kenney_ui_audio/click1.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/click2.wav",
+                      "bytes":  10062,
+                      "sha256":  "a8b35cb35ff45738a9d7fe008490ad21a3ad30417dadd544a435d8b0ea84d841",
+                      "source":  "addons/kenney_ui_audio/click2.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/click3.wav",
+                      "bytes":  15694,
+                      "sha256":  "8d0676a5bcbfedad3e65b7b73e93a044216d7f192c99a3a05caf21e2aa4a8dda",
+                      "source":  "addons/kenney_ui_audio/click3.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/click4.wav",
+                      "bytes":  6734,
+                      "sha256":  "0d80e2c82426316b140b0686e10f83924ef794e9a9dfe13aaaa794b18200b048",
+                      "source":  "addons/kenney_ui_audio/click4.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/click5.wav",
+                      "bytes":  6222,
+                      "sha256":  "8a6f69fef5d241794a98d0b71baf0c7f51743c9e54ee4dd010a0323a8edeca83",
+                      "source":  "addons/kenney_ui_audio/click5.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/mouseclick1.wav",
+                      "bytes":  13646,
+                      "sha256":  "9f2a6efb18f36bcbae784af13f6f0edfaee99202acf6a830610b77b786c6004f",
+                      "source":  "addons/kenney_ui_audio/mouseclick1.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/mouserelease1.wav",
+                      "bytes":  15182,
+                      "sha256":  "2841f77228c7956b804cd828da10897746cfb5efafc80d6066e58cab7db5be1c",
+                      "source":  "addons/kenney_ui_audio/mouserelease1.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/rollover1.wav",
+                      "bytes":  41806,
+                      "sha256":  "97de1348d22990014d9b5da4a2dedb6a070b324bb5966f7b4819eafa616b4a0c",
+                      "source":  "addons/kenney_ui_audio/rollover1.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/rollover2.wav",
+                      "bytes":  11086,
+                      "sha256":  "c0c10c006967920edbb29ca364099a42ad3459a823d75f18a90181ac36774bf2",
+                      "source":  "addons/kenney_ui_audio/rollover2.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/rollover3.wav",
+                      "bytes":  15182,
+                      "sha256":  "f3a9e0cf97fd20c963d3793a42fc26a8f137b11d916cce1aca10b6419521eaa3",
+                      "source":  "addons/kenney_ui_audio/rollover3.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/rollover4.wav",
+                      "bytes":  21838,
+                      "sha256":  "7f00105fea3df85ae1b348152169e02485c8565ace881be5fc6f88d6282764c7",
+                      "source":  "addons/kenney_ui_audio/rollover4.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/rollover5.wav",
+                      "bytes":  22862,
+                      "sha256":  "12da6d7c42d0e6bfcc04e68e5d61c6a8605fbb8c27f662abbf1d376a564ff114",
+                      "source":  "addons/kenney_ui_audio/rollover5.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/rollover6.wav",
+                      "bytes":  31054,
+                      "sha256":  "83456798fb2dc81c3fa3eff7a02b4000210926d883b1710901bb89b639df3993",
+                      "source":  "addons/kenney_ui_audio/rollover6.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/switch1.wav",
+                      "bytes":  57166,
+                      "sha256":  "e48f397e7dffafab68a2252287b8ff0e3805f141f76e51a3c6285e72e0d443d0",
+                      "source":  "addons/kenney_ui_audio/switch1.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/switch2.wav",
+                      "bytes":  56142,
+                      "sha256":  "b0f7b256b9baa6ff7558c2d7404d29754671939627b9ae27cc49b5d558721170",
+                      "source":  "addons/kenney_ui_audio/switch2.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/switch3.wav",
+                      "bytes":  64846,
+                      "sha256":  "2c04718535a175affda107adc8cad34abdccc94b9a9100297e39a0077c207515",
+                      "source":  "addons/kenney_ui_audio/switch3.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/switch4.wav",
+                      "bytes":  76110,
+                      "sha256":  "83956adf4ac68a44a7ab6d7f69d03560a3e575fa1cc11431fe291f859f2178a9",
+                      "source":  "addons/kenney_ui_audio/switch4.wav"
+                  },
+                  {
+                      "path":  "res://assets/audio/cc0/kenney_ui/switch5.wav",
+                      "bytes":  55630,
+                      "sha256":  "824feeb7f534127a82dd41bffc63613b59a412940b173aad9e6165a904cb05b3",
+                      "source":  "addons/kenney_ui_audio/switch5.wav"
+                  }
+              ]
+}

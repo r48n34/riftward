@@ -1,190 +1,269 @@
 # RIFTWARD - QA Report
 
-**Build:** 0.2.0
-**Engine:** Godot 4.7.2 stable, Forward+, Jolt Physics, D3D12  
+**Build:** 0.3.0 "Sound & Motion"
+**Engine:** Godot 4.7.2 stable (`ed1daf0bf`), Forward+, Jolt Physics, D3D12  
 **Reference machine:** Windows, NVIDIA GeForce RTX 3060  
-**Date:** 2026-10-25
+**Date:** 2026-10-26  
+**Gate command:** `$env:APPDATA="D:\godotGa\game\tests\.appdata"; powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\godotGa\game\tests\run_all.ps1"`
 
 ## 1. Summary
 
-The playable build passes all fourteen automated suites: boot, real-boot shooting/input, real-boot inventory, gameplay integration, death/downed/results, under-reach dungeons, Field Training, procedural world, planet variants, enemy AI, companions, progression/content, UI and the icon catalog. The UI/content expansion also added display settings, visual-first Loadout/Locker/Skills/Squad/Outpost/Quick Deploy screens, the outpost layout v2 diorama, extreme weather and five run modes, 12 new icons, a Reach Event HUD banner, the four-act deployment drop-feed cinema and save v5/layout migration; the UI and progression suites cover each of those additions. It was exercised windowed on D3D12 to capture the main menu, Quick Deploy preflight, hub, Loadout, Locker, Skills, Squad, Outpost, Codex, Settings, results and in-deployment HUD plus the scope and tactical-map views; all **21 captures** (17 screen captures plus the 4 drop-feed acts) were regenerated at 1600x900 and visually inspected. No blocking script or runtime errors remain in the normal play path.
+The 0.3.0 release grows the gate from 14 to **18 suites** and adds systems coverage for audio, rideables,
+cut-scenes and the CC0 asset pipeline on top of the existing boot, shooting, inventory, integration, death,
+dungeon, tutorial, world, variants, AI, companions, progression, UI and icon suites.
 
-| Suite | Command | Result |
-|---|---|---|
-| Boot | `--headless --path . --quit-after 240` | PASS - no script errors |
-| Shooting/input | `--headless --path . --quit-after 4000 -- --shoot-smoke` | PASS - real App boot, sniper charge fire, all four weapon slots, knife swing, abilities, grenade, reload, squad/pet commands; no runtime errors |
-| Inventory | `--headless --path . --quit-after 4000 -- --inventory-smoke` | PASS - real App boot, I-key path pauses, presents four weapon rows and satchel, closes cleanly |
-| Gameplay integration | `--headless --path . --quit-after 4000 res://tests/integration_test.tscn` | PASS - 118/118 checks: expanded content counts, all 20 world-event paths, dungeon entry/exit and exfil |
-| Death/downed/results | `--headless --path . --quit-after 4000 res://tests/death_test.tscn` | PASS - 9/9 checks |
-| Under-reach dungeons | `--headless --path . --quit-after 6000 res://tests/dungeon_test.tscn` | PASS - 57/57 checks |
-| Field Training | `--headless --path . --quit-after 9000 res://tests/tutorial_test.tscn` | PASS - 20/20 checks |
-| World | `--headless --path . --quit-after 4000 res://features/world/world_test.tscn` | PASS - 17+ POIs, interiors, fluids, nav, collision, map texture |
-| Planet variants | `--headless --path . --quit-after 12000 res://tests/world_variants_test.tscn` | PASS - 168/168 checks: original and new planet/map presets, fluid rules, weather, day/night |
-| Enemy AI | `--headless --path . --script res://features/ai/ai_test.gd` | PASS - 134/134 checks |
-| Companions | `--headless --path . --script res://features/companions/companions_test.gd` | PASS - 78/78 checks |
-| Progression/content | `--headless --path . --script res://tests/progression_test.gd` | PASS - 786/786 checks: counts, modes, new content, save v5/layout v2, display options |
-| UI | `--headless --path . --quit-after 2400 res://ui/ui_demo.tscn` | PASS - 130/130 checks: visual-first screens, settings display, outpost diorama, four-act loading cinema, Reach Event HUD |
-| Icon catalog | `--headless --path . --script res://tests/ui_icons_test.gd` | PASS - 148/148 checks: every referenced icon, including the 12 new SVGs, resolves |
+**The final authoritative full-gate run on 2026-10-26 passed all 18 suites (aggregate exit code 0):
+`All 18 test suites passed.`** Command:
 
-Aggregate runner: `powershell -ExecutionPolicy Bypass -File tests/run_all.ps1` -> **All 14 test suites passed.** The runner fails on either `SCRIPT ERROR` or engine `ERROR:` lines, so scripting and physics regressions are caught automatically.
+```powershell
+$env:APPDATA="D:\godotGa\game\tests\.appdata"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "D:\godotGa\game\tests\run_all.ps1"
+```
 
-Logs are saved to `tests/artifacts/logs/`.
+Two fixes closed the last reds found during the release cycle:
 
-## 2. Gameplay integration coverage
+- **`inventory`** — the real-boot smoke injected `I` while the new 4 s `insertion` cut-scene owned gameplay
+  input. `App._wait_for_gameplay()` now waits out any running cinematic (14 s cap) before smoke input.
+- **`ai`** — the standalone `--script` suite leaked one CC0 Ogg stream at exit
+  (`kenney_impact/impactGeneric_light_000.ogg`). Root cause: `AudioServer` erases a stopped playback only
+  on the next mix step. Audio teardown now flushes for ~60 ms before freeing voices; the final run's
+  `ai.err.txt` contains only the filtered certificate-store sandbox line.
 
-The integration test launches a real Deployment with seed 98765 and verifies:
+`ui`, `audio`, `assets`, `inventory`, `shooting` and `ai` are clean in the final run; the earlier
+`AudioStreamWAV`/`scratch_001.wav`, assets RID, inventory-timing and AI Ogg findings are all fixed.
 
-- ContentDB initialized with all expected counts and no validation errors (37 enemies, 16 weapons, 24 abilities, 24 perks, 13 contracts, 12 maps, 5 planets, 18 weather states, 5 game modes, 20 world events, 3 dungeon themes).
-- Profile loads; save version and layout version are current.
-- World generation completes and exposes 17+ POIs with a planet/map preset; tactical data exposes the texture, map/mode/planet/weather/clock identity, objective/building/cache/bounty/dungeon markers and live hostiles.
-- Fluid basins exist and `sample_fluid()` resolves them; enterable interiors are exposed.
-- Run identity carries difficulty, map preset, planet, mode and hardened enemy density.
-- Deployment seeds the contract plus side objectives; loot caches and HUD mission trackers exist.
-- Deployment pre-bakes under-reach entrances; entering one moves the player off the frontier, spawns hostiles/boss/loot, and exiting restores the surface position.
-- Crouch works through the C alternate action; the equipped weapon exposes an ADS zoom factor.
-- All four endgame pressure event definitions execute without script errors.
-- Player, health, weapon controller, ability manager and HUD snapshot exist.
-- Weapon controller owns four slots (two primaries, sidearm, issued knife); slot 4 reports `is_melee`, the HUD snapshot carries four slot entries, and the inventory snapshot exposes loadout plus satchel.
-- Enemy agents, two Wardens and a Driftling spawn; hostiles expose a head-mounted health bar that tracks real damage.
-- Real weapon fire (Sable Rail charge shot under ADS) consumes ammo and damages a real enemy through the hitscan/weakpoint pipeline.
-- Weapon slot 4 equips the knife, swings without consuming ammo, and slot 1 returns to the firearm.
-- Ability input starts a cooldown; all eight expansion ability effects (Ember Ward through Zip Line) execute through the real dispatcher.
-- All 20 world event paths execute through the real deployment effect path without script errors (supply drops, elites, skirmishes, surges, jammers, fog, Bloom waves, convoys, rift echoes, meteor strikes, rift cyclones, toxic drift, whiteouts, scavenger convoys, bounty brokers, distress beacons, collapse tremors).
-- Player interaction ray sees objective sites and exfil beacons; pressing E advances the contract and starts the exfil hold.
-- Objective interaction advances the contract.
-- The H call-exfil action requests extraction from the pad, spawns the Kestrel dropship, and can be cancelled before the final E interaction starts the successful hold.
-- Exfil hold starts through the actual player beacon interaction, spawns the Kestrel dropship, completes, and produces an extracted result with salvage, map, mode and recovered item count.
+Non-failures: `ERROR: Failed to read the root certificate store.` appears in every suite's stderr on this
+sandbox; `tests/run_all.ps1` filters it as engine/sandbox noise. Recast/navmesh precision warnings are
+benign.
 
-## 2b. Dungeon and tutorial coverage
+## 2. Gate evidence
 
-The dungeon suite builds all three themes and verifies 5–9 rooms, navmesh polygons, floor/ceiling collision, start/exit/boss anchors, loot anchors, a spawned encounter with hostiles/boss/loot, boss registration and despawn. The tutorial suite starts the real tutorial deployment and verifies no hostiles/squad, the five stages (move, three target hits, ability, cache, exfil), the tutorial result flag, profile completion and reward path.
+Final run, 18/18, exit code 0 (verbatim runner summary):
 
-## 3. Death test coverage
+```
+=== SUMMARY ===
 
-- Player spawns alive.
-- Lethal damage enters the 20-second downed state.
-- Revive charges initialize.
-- Bleedout ends in permanent death.
-- Player died signal fires.
-- Deployment produces a non-extraction result with a reason.
-- This is the same result path used by App/ProfileState on the UI side.
+Name           Passed Detail
+----           ------ ------
+boot             True finished
+shooting         True finished
+inventory        True finished
+integration      True finished
+death            True finished
+dungeon          True finished
+tutorial         True finished
+world            True finished
+world_variants   True finished
+ai               True finished
+companions       True finished
+progression      True finished
+ui               True finished
+ui_icons         True finished
+audio            True finished
+vehicles         True finished
+cutscenes        True finished
+assets           True finished
 
-## 4. World QA
+All 18 test suites passed.
+```
 
-Generation metrics from the world test (Verdant Verge preset, seed 12345):
+| # | Suite | Command args | Result | Evidence / checks |
+|---:|---|---|---|---|
+| 1 | boot | `--quit-after 240` | PASS | exit 0, no `SCRIPT ERROR` |
+| 2 | shooting | `--quit-after 4000 -- --shoot-smoke` | PASS | real-boot fire/slots/knife/abilities/grenade/reload; `RESULT: PASS` |
+| 3 | inventory | `--quit-after 4000 -- --inventory-smoke` | PASS | overlay opens, pauses, 4 weapon rows, satchel, clean close |
+| 4 | integration | `res://tests/integration_test.tscn` | PASS | 118/118 checks |
+| 5 | death | `res://tests/death_test.tscn` | PASS | 9/9 checks |
+| 6 | dungeon | `res://tests/dungeon_test.tscn` | PASS | 57/57 checks |
+| 7 | tutorial | `res://tests/tutorial_test.tscn` | PASS | 20/20 checks |
+| 8 | world | `res://features/world/world_test.tscn` | PASS | 26 POIs / 16 interiors / 52 loot anchors / 598 clutter; `[world-test] PASS` |
+| 9 | world_variants | `res://tests/world_variants_test.tscn` | PASS | 168/168 checks |
+| 10 | ai | `--script res://features/ai/ai_test.gd` | PASS | 134/134 checks; clean exit (teardown flush) |
+| 11 | companions | `--script res://features/companions/companions_test.gd` | PASS | 78/78 checks |
+| 12 | progression | `--script res://tests/progression_test.gd` | PASS | 975/975 checks |
+| 13 | ui | `res://ui/ui_demo.tscn --quit-after 2400` | PASS | 130/130 checks |
+| 14 | ui_icons | `--script res://tests/ui_icons_test.gd` | PASS | 148/148 checks |
+| 15 | audio | `--script res://tests/audio_test.gd` | PASS | 280/280 checks |
+| 16 | vehicles | `res://tests/vehicles_test.tscn` | PASS | 244/244 checks |
+| 17 | cutscenes | `res://tests/cutscene_test.tscn` | PASS | 78/78 checks |
+| 18 | assets | `--script res://tests/assets_test.gd` | PASS | 2,110/2,110 checks |
 
-- Generation time: about 1.42 s total, including about 237 ms nav bake.
-- 19 POIs (17 authored + 2 preset extras), 16 roadside outbuildings, 3 exfil pads, 2 drop zones, 9 enterable interiors.
-- 64 terrain chunks, 204,800 terrain triangles.
-- 3,144 navigation polygons.
-- 5,802 MultiMesh scatter instances across 12 batches.
-- 3 fluid basins with 3 surface meshes and 2 lava glow lights.
-- Physics raycast from above hits terrain; interior floor/ceiling rays hit.
-- Topographic map texture generated with water/lava tinting.
-- Planet variants test: the 168-check suite generates the original and expanded preset list with planet biome names and correct fluid types (Cinder lava-only, Thalassa water-only, Frost water, Nyx lava-only), interiors, weather and day/night systems.
+Logs: `tests/artifacts/logs/<suite>.out.txt` (stdout incl. results) and `<suite>.err.txt` (engine
+errors/warnings). The runner fails a suite on `SCRIPT ERROR`, any unfiltered engine `ERROR:` line, or a
+missing pass marker (`RESULT: PASS` or the suite-specific marker).
 
-Known benign console noise: Recast emits precision warnings for agent_height, agent_max_climb and agent_radius because they snap to voxel units. These do not affect play.
+## 2b. Render smoke captures (2026-10-26)
 
-## 5. AI QA
+Fresh D3D12 captures were taken against the 0.3.0 build (RTX 3060, 1600x900) and are tracked in
+`tests/artifacts/`, with curated copies in `captures/0.3.0-sound-and-motion/`. Both runs exit 0 with no
+renderer errors:
 
-The 134-check AI suite covers:
+- `tests/artifacts/main_menu.png` / `captures/0.3.0-sound-and-motion/main-menu.png` — the menu footer
+  renders **"RIFTWARD v0.3.0 · Godot 4.7 · Frontier Ops"**, direct evidence of the version bump.
+- `tests/artifacts/deployment.png` / `captures/0.3.0-sound-and-motion/insertion-cutscene.png` — the
+  **insertion cut-scene** live: letterbox, `CUTSCENE // INSERTION`, `BEAT 02/03`, caption
+  `KESTREL — FIRST CONTACT / Boots on the ground. HUD is live. Weapon hot.`, the **SKIP CINEMATIC**
+  affordance, world and planet behind. Captured 2 s after `ready_to_play`, i.e. by design inside the shot.
+- `tests/artifacts/deployment_clear.png` / `captures/0.3.0-sound-and-motion/drop-zone-rideable.png` —
+  HUD-hidden gameplay at the drop zone: pod pillar, crates and a spawned ground `rig` rideable on the pad
+  (new vehicle + clutter content visible).
 
-- Spawn contract, collision layers/masks, group membership, health meta and weakpoint metadata.
-- Vision + LOS + hearing, FSM transitions, ranged telegraphs and melee.
-- Real CombatUtils damage into the player, enemy death, defeat signal, EventBus and RunState kill recording.
-- Loot drops, auto-collect and E interaction.
-- Shock/burn/corrode/slow statuses.
-- Elite affix and guaranteed item drops.
-- Boss phase transition and boss kill event.
-- Deployment does not end on enemy death.
+Capture commands:
 
-A separate sandbox test with the real Player confirms six agents engage and navigate once the world navmesh is baked. A deployment smoke confirms 23 EnemyAgents across 10 archetypes, a live enemy damaging the real Player, and a player-pipeline kill that leaves the run active.
+```powershell
+& "C:\Users\devre\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe" --path "D:\godotGa\game" --rendering-driver d3d12 -- --capture-menu
+& "C:\Users\devre\Downloads\Godot_v4.7.2-stable_win64.exe\Godot_v4.7.2-stable_win64_console.exe" --path "D:\godotGa\game" --rendering-driver d3d12 -- --smoke-capture
+```
 
-## 6. Companion QA
+No other screenshots were regenerated this cycle; the existing `media/`, `ui/_screenshots/` and
+`features/world/preview_shots/` art is unchanged and still valid for screens that did not change.
 
-The 78-check companion suite covers all four Warden roles and all three Driftling roles:
+## 3. World QA
 
-- Visual construction and friendly collision/team setup.
-- Follow/hold/focus/revive commands and teleport catch-up.
-- Medic heal, heavy taunt/armor, scout marking, engineer shock turret.
-- Warden downed -> E prompt -> revive; automatic player revive.
-- Mote shield/heal, Cinder damage, Pip scan.
-- Pet damage, heal, disable/self-repair, cloak support.
-- CompanionManager spawning from ProfileState and squad-status HUD payload.
+Generation metrics from the world contract test (Verdant Verge preset, seed 12345, headless):
 
-## 7. UI QA
+- **1,365 ms** total generation (phase A 134 ms, phase B 393 ms) including a **245 ms** nav bake.
+- **26 POIs** (24 base = 21 authored `POI_LAYOUT` entries + 3 exfil pads, plus 2 preset extras; up to 28 on
+  a four-extra preset), **16 enterable interiors**, minimum POI centre spacing 173.1 m.
+- **20 POI types** all present: the 13 original kits plus `foundry_hall`, `hab_cluster`, `comms_array`,
+  `fuel_depot`, `clinic_shelter`, `research_lab`, `water_works`; every type has a `POISpecs` row and
+  `POISpecs.validate()` is empty.
+- Second-wave kit primitives (authored budget, gate >= 60): foundry_hall 256, hab_cluster 381,
+  comms_array 203, fuel_depot 281, clinic_shelter 228, research_lab 216, water_works 334.
+- 64 terrain chunks / 204,800 terrain triangles, 3,252 navmesh polygons, 656 nodes.
+- 17 scatter MultiMesh batches / 6,449 instances, plus **5 POI-clutter batches / 598 instances**
+  (about 480 at default density) and **52 loot-prop anchors**.
+- 3 fluid basins / 3 surface meshes / 2 lava glow lights; physics raycast from above hits terrain;
+  interior floor/ceiling rays hit.
+- Determinism replay: identical POI layout for the same seed (26 POIs, first at
+  `(-393.8027, -15.34973, 320.0919)`), 1,148 ms without nav/env.
 
-The 130-check UI suite now covers the visual-first expansion as well as the previous flows: Quick Deploy registration/preflight/back navigation with 5 planets, 12 maps, 5 modes and planet portraits/map thumbnails; hub navigation; Loadout item-art cards; Locker compact Warden previews and pet/weapon-skin previews; Skills discipline/ability/attribute/perk medallions; Squad Warden portraits and Driftling art; outpost `get_diorama()` geometry (8 module rects inside the board, hit selection); settings display controls/options (window mode, resolution, V-Sync, render scale, AA, FPS cap, quality, interface scale); the four-act deployment drop-feed cinema (threat signature with boss dossier, rift breach, drop descent and touchdown, skill/act rail, radio traffic and skip/static-briefing paths); HUD binding (minimap, tactical map, precision scope, style aim sight, mission trackers, weather/clock chip, training card, dungeon banner, hazard overlay) plus the Reach Event banner after `EventBus.world_event`; M-key map toggling, non-scoped ADS aim-sight activation and scope exclusivity, deployment transitions, inventory overlay presentation with four weapon rows and satchel loot plus clean dismissal, gear equip, perk purchase, squad/pet assignment, high-contrast rebuild, accessibility application, content availability, font loading, old/new icon import and icon-tab glyph assignment.
+Known benign console noise: Recast emits precision warnings for `agent_height`, `agent_max_climb` and
+`agent_radius` because they snap to voxel units; a nav region synchronization warning (4 edge errors) is
+also harmless. They do not affect play.
 
-The 786-check progression/content suite now covers the expanded catalog: 4 difficulty presets, 12 map presets, 5 planets, 18 weather states, 5 game modes and 20 world events, 13 contracts, 37 enemy entries, 3 dungeon themes; new planet/map/enemy/contract ids and fields; mode math (Normal 1080 s/1x, Quick 1080 s at 2x, Blackout start_time 0.94 and reward/loot bonuses, Gauntlet 840 s with 0.45 storm fraction, Onslaught density 1.35 / elite +0.20 / reward 1.5 / hostile +12); App display option getters and `apply_display_settings()` under headless with settings restored; `ProfileState.validate_base_layout()` empty for all 8 modules with in-bounds/non-overlapping footprints, the v4→v5 stale-layout migration preserving module tiers/currency/inventory, and SAVE_VERSION 5. Existing checks were kept: planet/map/difficulty integrity, staged contracts, hardened difficulty fields, quick-mode 2x clock math, explicit map override and planet resolution, tutorial mode clock/exfil/storm behaviour, per-weapon ADS zoom, all 16 weapon viewmodels plus the knife viewmodel, mechanical level gates, default and rebindable actions, duplicate-binding detection, four-slot starter kit, v2 save migration, primary-slot swap/equip rules, XP thresholds and point grants, perk level gates, kill-sourced run XP, difficulty reward and result map/mode/time-scale/mode clock/run duration/XP breakdown math, recovered item count, and the late-run pressure curve.
+## 4. Content, loot and Codex QA
 
-21 screen captures (1600x900) are in `ui/_screenshots/`:
+The 975-check progression/content suite covers:
 
-- 01_main_menu, 02_hub, 03_loadout, 04_locker, 05_skills, 06_squad, 07_outpost, 08_codex, 09_settings, 10_loading, 11_results, 12_hud, 13_pause, 14_hud_down, 15_hud_scope, 16_tactical_map, 17_quick_deploy.
-- Deployment drop feed: 18_loading_breach (act 2), 19_loading_descent (act 3), 20_loading_touchdown (act 4), 21_loading_leviathan (act 1 on Thalassa-2 with the Leviathan dossier).
+- All content counts including the new **10 loot items** (rarity/value/stack/effects), **3 loot tables**
+  (`poi_common`, `poi_rare`, `vehicle_stash`) with weighted entries, salvage bands, core chances and rarity
+  floors, **7 POI Codex records** and **5 rideable Codex records**.
+- `ContentDB.roll_loot_table()` / `get_loot_table*()` / `get_loot_table_for_poi(_dict)` /
+  `build_loot_cache_payload()` and the POI `loot_tier` -> table mapping (tiers 3–4 -> `poi_rare`,
+  `vehicle_stash` opt-in only, unknown -> `poi_common`).
+- Save schema still **v5** (`SAVE_VERSION == 5`, base layout v2); no new persistent fields, so no
+  migration is required for 0.3.0.
+- Existing checks retained: planets/maps/weather/dungeons, modes and their math, contracts, world events,
+  enemies, weapons/abilities/perks, outpost layout validation, display-settings getters, XP/result math.
 
-Planet/world captures (1600x900) are in `features/world/preview_shots/`:
+## 5. Rideable QA
 
-- Default frontier: overview, dropzone, Warden outpost, relay spire, exfil pad, Ashen canyon, planet sky.
-- `cinder_caldera/` and `tidal_shelf/`: nine framed shots each, including overview, dropzone, POIs, sky, fluid basin and interior. These were captured through the real windowed D3D12 renderer with `world_preview.tscn -- --capture --preset <id>`.
+The 244-check vehicles suite builds and exercises all five archetypes:
 
-Visual review notes:
+- `rig` (Rift Rig), `hoverbike` (Vale Hoverbike), `airplane` (Kestrel Wing), `spaceship` (Void Skiff),
+  `horse` (Warden Steed): spec fields (id/name/kind/seats/max_speed/accel/turn_rate/health/mass/icon/
+  hud_color), collision layer 11 "Vehicle" and group membership.
+- Mount/dismount round-trip through the real `Player` hook, seat/exit nodes, forced-dismount path.
+- Forward displacement after a run of physics frames for all five; horse gait transitions (idle -> walk ->
+  trot -> canter -> gallop) with stamina; weapon lock while riding; dungeon entry guard.
+- HUD snapshot keys (speed_kph/health/boost/gear/...) and the `UIVehiclePanel` visibility contract.
+- `VehicleSites.build()` deterministic placement: guaranteed rig + hoverbike at the drop zone, airplane /
+  spaceship / horse routed by POI type and `POISpecs.vehicle` tags, fallback placement when a POI is
+  missing (`PASS: VehicleSites spawns five with spec-tagged POIs`).
 
-- Main menu now leads with the oversized Quick Deploy CTA, a compact Enter Hub secondary action and a Field Training entry; the remembered drop strip carries a map thumbnail, planet medallion and mode clock.
-- Quick Deploy preflight presents planet portraits, map thumbnails, four difficulty cards, five mode cards, a weather forecast strip and a deployment panel with contract/target intel.
-- Cinder-4 reads as a hot basalt/ember world with visible lava basins; Thalassa-2 reads as a pale tidal shelf with water basins and teal kelp growth; Frost-9 reads as pale ice shelves and blue shadow; Nyx-12 reads as violet rift light over black basins.
-- Interiors are enclosed, lit and walkable; the derelict freighter adds a full ship interior.
-- Hub, Loadout, Locker, Skills, Squad, Codex and Settings read as a coherent image-first field terminal: item art, Warden/pet portraits, discipline medallions, compact cosmetic previews and tooltip-only explanations. The Codex includes Planets, Dungeons, Weather and Operations tabs.
-- The Outpost screen renders the 8×8 diorama with distinct module structures, built/planned/road legend and a LAYOUT v2 badge; module rows carry icons and miniatures.
-- HUD notifications no longer obscure ammo; radio traffic is a single subtitle line; the weather/clock chip, training card, dungeon banner, hazard tint and Reach Event banner sit outside the combat sightline.
-- Compass objective/exfil/Rift Shrine/cache/bounty markers are live and update every 0.5 s; the FIELD OPS tracker shows direction, progress and distance.
-- Outpost module list scrolls; the diorama and side column stay inside 1600x900 and reflow at 1280x720.
-- The first-person viewmodel is intentionally stylized/blocky; at the default aspect it can obscure the lower-right edge of the world. It reads as a sci-fi rifle but is the least polished visual element.
+## 6. Cut-scene QA
 
-## 8. Visual captures
+The 78-check cutscene suite covers:
 
-- Main menu: `ui/_screenshots/01_main_menu.png` and `tests/artifacts/main_menu.png`
-- Deployment HUD (with minimap): `tests/artifacts/deployment.png`
-- HUD without overlays: `tests/artifacts/deployment_clear.png`
-- Hub, loadout, locker, skills, squad, outpost, codex, settings, loading, results, pause, scope: `ui/_screenshots/`
-- New-feature visual QA (this pass): `captures/qa_enemy_health_bar.png`, `captures/qa_hud_aim_sight.png`, `captures/qa_inventory.png`, `captures/qa_exfil_ship.png`
-- World: `features/world/preview_shots/` (7 frames)
-- Enemy sandbox: `features/ai/preview_shots/` (4 frames)
-- Companion sandbox: `features/companions/preview/` (3 frames)
-- Expanded UI pass (this pass): all 21 `ui/_screenshots/` PNGs were regenerated at 1600x900 and inspected for settings display, Quick Deploy, Outpost, Loadout, Locker, Skills, Squad and the deployment drop-feed acts.
+- All four ids registered (`deployment`, `insertion`, `exfil`, `boss`); beat timelines and durations;
+  beat advance/skip/finish exactly once; the 12 s hard cap; reduce-motion 1.2 s card carrying every
+  caption; `cinematic_state_changed` emission (opt-in) and App ownership semantics.
+- Full playback without a rendered 3D world (2D-card fallback), including the exfil camera anchor when no
+  dropship exists and the boss shot aborting when the boss is freed.
+- Loading-screen integration: `CinemaInsertionShot` exists and hands back to the Touchdown act; skip still
+  collapses the loading cinema.
 
-## 9. Windowed render smoke
+## 7. Audio QA
 
-- D3D12 initializes on the RTX 3060 and renders the menu, hub, Quick Deploy, Loadout, Locker, Skills, Squad, Outpost, Codex, Settings and deployment HUD.
-- Windowed QA also verified the display settings card, the outpost diorama, the Reach Event banner, enemy head health bars, the Lattice AR aim-sight reticle at ADS, the full-screen paused inventory, and the Kestrel dropship hovering over a called exfil pad (captures listed above).
-- World generation and loading complete without renderer errors.
-- Mouse capture and pause paths were exercised by UI harness logic; no crash.
-- No formal average/1% low FPS capture was automated. The build targets 60 FPS at 1080p and runs comfortably in the windowed captures; formal profiling is on the backlog.
+The 280-check audio suite covers:
 
-## 10. Known issues / limitations
+- Catalog size/uniqueness — **113 ids / 113 recipes** (`[AUDIO TEST] catalog=113 recipes=113`), every
+  required gameplay/cut-scene/vehicle call-site id present, `has_stream()` semantics.
+- Every catalog id resolves to a stream (CC0 override or procedural fallback); fallback count and caching.
+- Bus layout (`Music`, `SFX`, `UI`, `Ambience`, `Vehicles`), the `AudioEffectLimiter` on `Master`, and
+  volume/mute routing.
+- Music: all eight cues + `silent`, crossfade switching, repeat is a no-op, `set_music_mood` legacy mapping,
+  `get_music_tracks()`, headless-safe logical state.
+- Ambience: `set_ambience` selects/switches/stops beds, unknown ids ignored, headless-safe.
+- Varied playback, looped positional players, UI sound id list, `get_stats()` fields.
 
-1. Standalone export is delivered as `release/RIFTWARD-win64.zip` (exe + pck, checksummed); rebuilding it needs Godot 4.7.2 export templates installed on the build machine.
-2. The minimap/tactical map is north-up and shows live hostiles in range; it has no fog-of-war or permanent discovery history, and POI icons appear after discovery.
-3. Frag-only quick throw - shock and veil grenade definitions exist; selection/behavior is not exposed in play.
-4. Upgrade-based outpost - eight modules, three tiers and the versioned 8×8 layout work; freeform drag placement is not exposed.
-5. No weapon mastery tracks - weapons have rarity/affixes but no per-weapon XP/mastery progression.
-6. Weather is seeded by planet/preset and can be forced by events and modes; there is no manual weather picker in Quick Deploy.
-7. No mid-run save - quitting a deployment abandons the run (by design), but there is no resume.
-8. Test-process exit codes - Godot's Start-Process wrapper reports null exit codes on this machine, so `tests/run_all.ps1` gates on explicit PASS markers plus absence of `SCRIPT ERROR` and engine `ERROR:` lines. Individual suites still call quit(0/1) correctly.
-9. Benign exit leaks - a few ObjectDB instances are reported when tests force-quit with active async effects. These are test-harness shutdown artifacts, not runtime gameplay leaks observed during normal runs.
-10. No voice acting / localization - English text only; radio is subtitles.
+## 8. Assets and FX QA
 
-## 11. Regression fixes in the current pass
+The 2,110-check assets suite covers:
 
-- **Muzzle-flash crash on firing.** `WeaponController._muzzle_flash()` passed `get_tree().current_scene` (the `boot.tscn` root, a plain `Node`) into `CombatVFX.muzzle_flash()`, which requires a `Node3D`. The test scene happened to be a `Node3D`, masking it. Fixed by using the player's effect parent, the Deployment actors root.
-- **Projectile/grenade setup before entering the SceneTree.** `CombatProjectile.setup()` wrote `global_position` before `add_child()`, producing an `!is_inside_tree()` engine error and risking a grenade at the world origin. Setup now stages the spawn origin and applies it in `_ready()`.
-- **Protective regression coverage.** A new real-boot `--shoot-smoke` suite launches through `boot.tscn`/App with the exact production scene graph, fires the starting weapon, then exercises abilities, grenade, reload, weapon swaps, squad and pet commands. `tests/run_all.ps1` now fails on engine `ERROR:` lines as well as `SCRIPT ERROR`, so this class of bug is caught automatically.
+- Every `MANIFEST.json` parses with required provenance fields; every listed file exists, matches the
+  recorded byte size and sha256; per-pack `LICENSE.txt` present; curated payload under the 18 MB cap and no
+  single file over 2 MB.
+- Particle Pack `logical_names` matches `ParticleLibrary.TEXTURE_FILES`; `ParticleLibrary` builds a valid
+  materialised `GPUParticles3D` for every one of the **14 effect ids** and falls back cleanly for unknown
+  ids/missing textures.
+- `CombatVFX` still runs headless and creates primitive feedback with the particle layer present or
+  simulated-absent, then restores it.
+
+## 9. UI QA
+
+The 130-check UI suite covers the existing image-first screens plus this release's additions:
+
+- The five-act loading cinema (threat signature with boss dossier, rift breach, drop descent, insertion,
+  touchdown, skill/act rail, radio traffic, skip/static-briefing paths).
+- Codex **Sites** and **Rideables** tabs and their entries.
+- Vehicle HUD panel wiring (`show/update/hide_vehicle`, snapshot rendering), HUD binding (minimap, tactical
+  map, scope, aim sight, trackers, weather/clock chip, training card, dungeon banner, hazard overlay,
+  Reach Event banner).
+- Display settings, accessibility, fonts/icons and the preflight/hub navigation flows.
+
+## 10. Known issues / outstanding
+
+No gate failures remain — the final run is 18/18. The remaining notes are limitations and deferred scope:
+
+1. **Deliberately deferred docs** (historical/store-specific, not part of the 0.3.0 refresh): `docs/STORE_PAGE.md`,
+   `docs/WEB_PORT.md` and the historical release bodies `docs/releases/v0.1.0.md` / `v0.2.0.md` still
+   describe earlier builds. `docs/ITCH_PAGE.md`, `docs/BUILD_PLAN.md` and the new
+   `docs/releases/v0.3.0.md` were refreshed for 0.3.0.
+2. No formal FPS/frame-time capture was automated this pass; 60 FPS at 1080p remains the target.
+3. Save format stays v5 and there is still no mid-run save (by design).
+4. The `run_all.ps1` `Start-Process` wrapper still reports null process exit codes on this machine, so the
+   runner gates on pass markers + absence of `SCRIPT ERROR`/`ERROR:` lines; individual suites still call
+   `quit(0/1)`.
+5. Navmesh/Recast precision and certificate-store console lines are benign sandbox noise (see §3/§1).
+6. Scope limitations shared with the release notes: single-player/offline only, no mid-run save, partial
+   grenade selection, UI-driven outpost upgrades, no free-cam cut-scene replay.
+
+## 11. Regression fixes in this pass
+
+- **Inventory smoke blocked by the insertion cut-scene.** The real-boot `--inventory-smoke` injected `I`
+  1.2 s after boot while the new 4 s `insertion` shot owned input, so the overlay never opened
+  (`opened=false paused=false overlay=false weapon_rows=0 snapshot_weapons=4`). `App._wait_for_gameplay()`
+  (waits out any running cinematic, 14 s cap) now runs before both the inventory and shooting smoke input;
+  re-verified `opened=true paused=true overlay=true weapon_rows=4 ... RESULT: PASS`.
+- **Audio-resource leaks at exit fixed.** The `ui` suite previously failed with
+  `Leaked instance: AudioStreamWAV` / `Resource still in use: .../scratch_001.wav`, `audio`/`assets` with
+  leftover pool resources, and `ai` with an unreleased `kenney_impact/impactGeneric_light_000.ogg` Ogg
+  playback. AudioDirector now stops pooled and ambient voices, drops stream references and clears the CC0
+  pack cache in `_exit_tree`, and the debug `[AUDIOTRACE]`/`[AUDIONOTIFY]` prints are gone. The last
+  `ai` leak was fixed at the engine-cause level: `AudioServer` erases a stopped playback on the next mix
+  step, so teardown flushes ~60 ms before freeing voices. All four suites exit clean.
+- **Cut-scene input ownership hardened** beyond the smoke fix: every cut-scene exit path restores HUD,
+  mouse and input, and `App.abort_cinematic()` covers scene changes/teardown.
+- The gate keeps the 0.2.0 protections: engine `ERROR:` lines fail the suite, `%APPDATA%` is redirected
+  when not writable, and logs are written to `tests/artifacts/logs/`.
 
 ## 12. Recommended next QA pass
 
-- Automated FPS/frame-time capture during a 20-enemy fight at 1080p and 1440p.
-- Full gamepad pass on physical hardware (UI focus and all combat actions).
-- 30-minute soak and five consecutive deployments checking node/memory counts.
-- Vault contract boss encounter end-to-end with HUD bar and phase transitions.
-- Difficulty/mutator/mode balance telemetry over 50 simulated runs.
-- Long-run verify of the v5 layout migration with real pre-expansion save backups.
+- Windowed D3D12 captures beyond the three render-smoke frames: all four cut-scenes, the vehicle HUD and a
+  mounted horse/hoverbike in motion.
+- A 30-minute soak with repeated mount/dismount and music/cue churn to prove no audio-resource growth.
+- Automated frame-time capture during a 20-enemy fight with a vehicle in frame.
+- Full gamepad pass including vehicle verbs (boost/brake/ascend) and cut-scene skip.
+- Difficulty/mode balance telemetry with the new cargo economy and loot tables over 50 simulated runs.

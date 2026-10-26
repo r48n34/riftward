@@ -1,0 +1,307 @@
+{
+    "schema":  1,
+    "pack_id":  "kenney_particle_pack",
+    "title":  "Kenney Particle Pack",
+    "author":  "Kenney (kenney.nl)",
+    "uploader":  "Calinou",
+    "asset_library":  {
+                          "id":  784,
+                          "version":  "1.0.2",
+                          "api_url":  "https://godotengine.org/asset-library/api/asset/784",
+                          "page_url":  "https://godotengine.org/asset-library/asset/784",
+                          "listed_license":  "CC0",
+                          "listed_download_status":  "ok",
+                          "listed_download_url":  "https://codeload.github.com/Calinou/kenney-particle-pack/zip/7e801dc538996622a91327bb1dd5879cf977aa09",
+                          "fetched_download_url":  "https://codeload.github.com/Calinou/kenney-particle-pack/zip/7e801dc538996622a91327bb1dd5879cf977aa09"
+                      },
+    "source_kind":  "github-archive",
+    "source_url":  "https://codeload.github.com/Calinou/kenney-particle-pack/zip/7e801dc538996622a91327bb1dd5879cf977aa09",
+    "commit":  "7e801dc538996622a91327bb1dd5879cf977aa09",
+    "archive_sha256":  "8b3df33f8fa4928cabb0fb62f866552106a933652ff1e12db55746d53bc4bab5",
+    "archive_bytes":  5029543,
+    "license":  "CC0-1.0",
+    "license_file":  "res://assets/cc0/kenney_particle_pack/LICENSE.txt",
+    "license_copies":  [
+                           "res://assets/textures/particles/LICENSE.txt"
+                       ],
+    "curated_root":  "res://assets/textures/particles",
+    "file_count":  43,
+    "total_bytes":  2779111,
+    "generated_by":  "tools/fetch_asset_packs.ps1",
+    "files":  [
+                  {
+                      "path":  "res://assets/textures/particles/circle_01.png",
+                      "bytes":  66234,
+                      "sha256":  "10e757a4b46893fc7d53f24eb09767b3cb3183d33d9bf2fded0c06beb45c2de0",
+                      "source":  "addons/kenney_particle_pack/circle_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/circle_02.png",
+                      "bytes":  41442,
+                      "sha256":  "71b208a2aa392f4cc53a422ef09bb9b54e1732fd440fa4d989b098a5fb6451cc",
+                      "source":  "addons/kenney_particle_pack/circle_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/circle_03.png",
+                      "bytes":  69716,
+                      "sha256":  "5c0d9704ed222df863a6a8602dca952ffcd04421136ea439a0be2f257ebb8c73",
+                      "source":  "addons/kenney_particle_pack/circle_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/circle_04.png",
+                      "bytes":  56681,
+                      "sha256":  "210aaed68de75133fe663eeba6dbceb31b4fca2c4ed49b85c62e1b6b5fcf7550",
+                      "source":  "addons/kenney_particle_pack/circle_04.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/dirt_01.png",
+                      "bytes":  46129,
+                      "sha256":  "5dc794d1cde78d48b92b538f3fb4eedc47edefb636724df00d9815c15b4dc987",
+                      "source":  "addons/kenney_particle_pack/dirt_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/dirt_02.png",
+                      "bytes":  52813,
+                      "sha256":  "ffd9d893775a42fa9d9d471cdd6d6fed15ed6ebf266f227274cd3ffeea7eaf05",
+                      "source":  "addons/kenney_particle_pack/dirt_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/dirt_03.png",
+                      "bytes":  112585,
+                      "sha256":  "b69e01c33350424079ecd9788879ebac1736251605071e0db435ecfe22eb6a81",
+                      "source":  "addons/kenney_particle_pack/dirt_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/fire_01.png",
+                      "bytes":  95429,
+                      "sha256":  "258f4fcbf20b20afe137fc4688ef24d6467a3e71b412c3dc9b400cd2c0ed3ce3",
+                      "source":  "addons/kenney_particle_pack/fire_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/fire_02.png",
+                      "bytes":  84307,
+                      "sha256":  "6b95e193b302d50980ba51fa77fb84c41af55c346a402cb5964f4c2305f35467",
+                      "source":  "addons/kenney_particle_pack/fire_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/flame_01.png",
+                      "bytes":  51191,
+                      "sha256":  "e9a3b7f44defc34251eccca5f54ad719765fe25b5266df7eb0906cd859076a43",
+                      "source":  "addons/kenney_particle_pack/flame_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/flame_02.png",
+                      "bytes":  64804,
+                      "sha256":  "42ccd379f7730d298ae4b156bb12e8877e6b6348302c061b97bfc4c086102847",
+                      "source":  "addons/kenney_particle_pack/flame_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/flame_03.png",
+                      "bytes":  47727,
+                      "sha256":  "d129aca9b22600f22fca302cfe3fad518faca0067fa50803724f2cf8ecf2f444",
+                      "source":  "addons/kenney_particle_pack/flame_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/flame_04.png",
+                      "bytes":  67316,
+                      "sha256":  "4ca5e6a8693849ed25291c4b8ad3dbbee41641f8b953761eff06ffcfd331fcd4",
+                      "source":  "addons/kenney_particle_pack/flame_04.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/flare_01.png",
+                      "bytes":  39143,
+                      "sha256":  "7ec33b6648f555b958eee8b3c799d44e76ff0e7516a06525d37911e208373d5b",
+                      "source":  "addons/kenney_particle_pack/flare_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/magic_01.png",
+                      "bytes":  77122,
+                      "sha256":  "4530b084d541351c779aac12877e831a398f7e4575126fa2a26c5eb2c47ca37b",
+                      "source":  "addons/kenney_particle_pack/magic_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/magic_02.png",
+                      "bytes":  82611,
+                      "sha256":  "8f3594c9a8efdd8945a83e51b11b445a7450a4c46eedaf8f67154fbf472ecece",
+                      "source":  "addons/kenney_particle_pack/magic_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/muzzle_01.png",
+                      "bytes":  77833,
+                      "sha256":  "1e7da51836e4d703fbc336808e2f9b9570ccb149d340cbac1de15b7b0f4d6c2a",
+                      "source":  "addons/kenney_particle_pack/muzzle_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/muzzle_02.png",
+                      "bytes":  53879,
+                      "sha256":  "8bc460888f4be1b263b1857cc167422a92da7f60454948666dc954772be47c56",
+                      "source":  "addons/kenney_particle_pack/muzzle_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/muzzle_03.png",
+                      "bytes":  53994,
+                      "sha256":  "878f9e23a11427caf10946571950eb7ce55d672ab3a1c6c792436c4613ad6cbe",
+                      "source":  "addons/kenney_particle_pack/muzzle_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/muzzle_04.png",
+                      "bytes":  59586,
+                      "sha256":  "2353b4b16c26f51237b2d321e68bb8d335ddc8cbc8fbfb9940ba09b646a72094",
+                      "source":  "addons/kenney_particle_pack/muzzle_04.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/muzzle_05.png",
+                      "bytes":  51350,
+                      "sha256":  "3695ee37398cd825768292acdc0fbcd712a900728ee529b0df552b426390b9ea",
+                      "source":  "addons/kenney_particle_pack/muzzle_05.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/scorch_01.png",
+                      "bytes":  57261,
+                      "sha256":  "f2247ba0feeb084b1b26ea6bec312bcce3d4cd52c1891835dcfabea7bc0c77ce",
+                      "source":  "addons/kenney_particle_pack/scorch_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/scorch_02.png",
+                      "bytes":  70510,
+                      "sha256":  "7408707eb3cd1aacb86bd008a99696b71df21df233227002bb9ba6ddc6b4da02",
+                      "source":  "addons/kenney_particle_pack/scorch_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/scorch_03.png",
+                      "bytes":  87486,
+                      "sha256":  "9eec4d5b9e9c3ea4b7f2036fb4a094c93ac7829752d899979523733bd04182f8",
+                      "source":  "addons/kenney_particle_pack/scorch_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/smoke_01.png",
+                      "bytes":  91637,
+                      "sha256":  "89df665bb2e9a021edad2a9077d2651c44e6c6cd28f3fd38f800c41a5febd2a2",
+                      "source":  "addons/kenney_particle_pack/smoke_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/smoke_02.png",
+                      "bytes":  91493,
+                      "sha256":  "c1959ff3ae2f07495cd9f3a0417534402e0ea327f77502b942ae3b874c5017af",
+                      "source":  "addons/kenney_particle_pack/smoke_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/smoke_03.png",
+                      "bytes":  38182,
+                      "sha256":  "03c219c4384206174c44ff6997ffdabd1bd4354709b9569f957bf9aa75e7dafd",
+                      "source":  "addons/kenney_particle_pack/smoke_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/smoke_04.png",
+                      "bytes":  92360,
+                      "sha256":  "be2579db131de274567e0e1b5a2e81f9790205f0e68a3c1a038d130a7b24e092",
+                      "source":  "addons/kenney_particle_pack/smoke_04.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/smoke_05.png",
+                      "bytes":  79571,
+                      "sha256":  "4c6607566fba4cb3e949f56ed0c38d49fddba844b29e8ec94d5fda20be1a8b01",
+                      "source":  "addons/kenney_particle_pack/smoke_05.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/smoke_06.png",
+                      "bytes":  58581,
+                      "sha256":  "74968cd44ba5c72bdaf1ebfc50d6113a401aae0ffded43f785055b4eeb9399df",
+                      "source":  "addons/kenney_particle_pack/smoke_06.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/spark_01.png",
+                      "bytes":  89628,
+                      "sha256":  "ca5e7eac772d5af176f0d45be34f416908859bf28697c31f3ec7f34609919f53",
+                      "source":  "addons/kenney_particle_pack/spark_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/spark_02.png",
+                      "bytes":  96325,
+                      "sha256":  "7e6272d9ac71494b553b114a0bc40ff4e7dd95749140eb92ce1ada3caef8d19d",
+                      "source":  "addons/kenney_particle_pack/spark_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/spark_03.png",
+                      "bytes":  74008,
+                      "sha256":  "72c4b00dd517c0cb360557318b92068970579658ac1a616d61c9750e53834e2f",
+                      "source":  "addons/kenney_particle_pack/spark_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/spark_04.png",
+                      "bytes":  78726,
+                      "sha256":  "e3fac37e94127b3b5fcfaaf91eca8c157dc32d08a760e8c9df35dc5fcf017407",
+                      "source":  "addons/kenney_particle_pack/spark_04.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/spark_05.png",
+                      "bytes":  61925,
+                      "sha256":  "31a0138d1c26c8110eff74fbfcd308439a82ca1e53ccd8fc002528e24fd32c36",
+                      "source":  "addons/kenney_particle_pack/spark_05.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/star_01.png",
+                      "bytes":  39485,
+                      "sha256":  "4cd179dbc319bfbe13a685abc6f3f4e8e668f4e1aff828bd86baddf0d20c72a7",
+                      "source":  "addons/kenney_particle_pack/star_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/star_02.png",
+                      "bytes":  47233,
+                      "sha256":  "75f4e34f3f0d8ab1af638961f9913747a3dfd89e42f1c0328be181019ec17d1e",
+                      "source":  "addons/kenney_particle_pack/star_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/trace_01.png",
+                      "bytes":  35209,
+                      "sha256":  "83744f00d8f1983703f1ab8f22bb6f8d59300ea699a0f42f4beb329ca6bcb378",
+                      "source":  "addons/kenney_particle_pack/trace_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/trace_02.png",
+                      "bytes":  36995,
+                      "sha256":  "1dca7e131bd013a83f543e575903befb7136809b4ff6564fac411deec44f7c82",
+                      "source":  "addons/kenney_particle_pack/trace_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/trace_03.png",
+                      "bytes":  39767,
+                      "sha256":  "0a08ccc56dcb937636d59cb4b747535f99b7a3a72d828ee2c8b3622900537574",
+                      "source":  "addons/kenney_particle_pack/trace_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/trace_04.png",
+                      "bytes":  43180,
+                      "sha256":  "515731b83110a2ef75c51ae2ceb94dd595dfc31739c21275fe07a270ba31a6ed",
+                      "source":  "addons/kenney_particle_pack/trace_04.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/twirl_01.png",
+                      "bytes":  47461,
+                      "sha256":  "a7031a2250cb2b98ef20ba049940fd7e8f4b4c4ee82000547ea12dd7445c9981",
+                      "source":  "addons/kenney_particle_pack/twirl_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/particles/twirl_02.png",
+                      "bytes":  70196,
+                      "sha256":  "70ec8ca0dac74ae75e435ec237d80aed74cfd762a0b02e50512fbf0a7a1adc0f",
+                      "source":  "addons/kenney_particle_pack/twirl_02.png"
+                  }
+              ],
+    "logical_names":  {
+                          "muzzle":  "res://assets/textures/particles/muzzle_01.png",
+                          "impact_metal":  "res://assets/textures/particles/spark_02.png",
+                          "impact_dirt":  "res://assets/textures/particles/dirt_01.png",
+                          "explosion":  "res://assets/textures/particles/fire_01.png",
+                          "dust":  "res://assets/textures/particles/smoke_01.png",
+                          "exhaust":  "res://assets/textures/particles/smoke_03.png",
+                          "sparks":  "res://assets/textures/particles/spark_05.png",
+                          "splash":  "res://assets/textures/particles/circle_02.png",
+                          "smoke":  "res://assets/textures/particles/smoke_05.png",
+                          "rain":  "res://assets/textures/particles/trace_01.png",
+                          "portal":  "res://assets/textures/particles/twirl_01.png",
+                          "scorch":  "res://assets/textures/particles/scorch_01.png",
+                          "flare":  "res://assets/textures/particles/flare_01.png",
+                          "trail":  "res://assets/textures/particles/trace_03.png"
+                      }
+}

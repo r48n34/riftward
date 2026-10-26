@@ -10,6 +10,10 @@ signal finished(result: Dictionary)
 const ENEMY_SCRIPT_PATH := "res://features/ai/enemy_agent.gd"
 const ALLY_SCRIPT_PATH := "res://features/companions/ally_agent.gd"
 const PET_SCRIPT_PATH := "res://features/companions/pet_agent.gd"
+## Optional subsystems (features/vehicles, features/cutscene): loaded by path so
+## a stripped build or an in-progress branch degrades to "not available" instead
+## of failing to compile the whole deployment.
+const VEHICLE_SITES_PATH := "res://features/vehicles/vehicle_sites.gd"
 
 var contract_id: StringName = &"salvage_sweep"
 var seed_value: int = 0
@@ -40,6 +44,20 @@ var _objectives_completed: int = 0
 var _looted: int = 0
 var companion_manager: Node = null
 var _active_boss: Node = null
+## Rideables spawned for this run (features/vehicles), and the throttles for the
+## vehicle HUD and the music state machine.
+var _rideables: Array = []
+var _rideable_timer := 0.0
+var _vehicle_hud_open := false
+## Breachable loot props placed at POI clutter anchors (0.3.0 content streams).
+var _loot_props: Array = []
+var _music_timer := 1.0
+var _music_track: StringName = &""
+var _ambience_id: StringName = &""
+## One boss confrontation shot per boss instance; exfil plays exactly once.
+var _boss_cinematics: Dictionary = {}
+var _exfil_cinematic_done := false
+var _exfil_cinematic_playing := false
 var _compass_timer: float = 0.0
 var _scheduled_events: Array[Dictionary] = []
 var _event_cursor: int = 0
@@ -86,6 +104,8 @@ const POI_DISCOVERY_RADIUS: float = 180.0
 const GARRISON_STAGE_RADIUS: float = 140.0
 const HOSTILE_PRUNE_RADIUS: float = 300.0
 const MAX_LOOT_CACHES: int = 24
+## Clutter-anchored breachable props per run (POI detail + loot spread).
+const MAX_LOOT_PROPS: int = 10
 const CACHE_SITE_CLEARANCE: float = 22.0
 const ENDGAME_EVENTS: Array[Dictionary] = [
 	{"fraction": 0.58, "id": &"hunter_pack", "title": "Hunter Pack", "icon": &"paw", "color": Color("ffb866"),
@@ -148,6 +168,8 @@ func _start_deployment() -> void:
 		_build_fallback_world()
 	_cache_world_data()
 	_apply_mode_environment()
+	_spawn_rideables()
+	_spawn_loot_props()
 	_spawn_poi_markers()
 	progress_changed.emit(0.76, "Opening the under-reach")
 	await _prepare_dungeons()
@@ -178,6 +200,9 @@ func _start_deployment() -> void:
 	started = true
 	progress_changed.emit(1.0, "Deployment live")
 	ready_to_play.emit(player)
+	_set_music_track(&"deploy")
+	_set_ambience(&"wind_ambient")
+	_play_insertion_cinematic()
 	EventBus.radio_message.emit("Waystation Kestrel", "Operation live. The Reach is already folding.")
 	EventBus.notify(
 		"OPERATION LIVE · " + RunState.get_difficulty_name().to_upper(),
@@ -349,6 +374,9 @@ func _prepare_dungeons() -> void:
 
 func enter_dungeon(entrance: Node) -> void:
 	if _in_dungeon or ending or not is_instance_valid(player):
+		return
+	if player.has_method("is_riding") and bool(player.call("is_riding")):
+		EventBus.notification_requested.emit("Dismount first", "Leave your ride on the surface before entering the under-reach.", &"warning")
 		return
 	if entrance == null or not is_instance_valid(entrance):
 		return
@@ -1256,6 +1284,243 @@ func _register_boss(enemy: Node) -> void:
 		_active_boss = null
 	)
 	EventBus.radio_message.emit("Waystation Kestrel", display + " is awake. Keep moving.")
+	_play_boss_cinematic(enemy)
+
+
+# ---------------------------------------------------------------------------
+# Rideables, cinematics and music
+# ---------------------------------------------------------------------------
+
+func _spawn_rideables() -> void:
+	_rideables.clear()
+	if not ResourceLoader.exists(VEHICLE_SITES_PATH):
+		return
+	var site_script: Script = load(VEHICLE_SITES_PATH)
+	if site_script == null:
+		return
+	var sites = site_script.new()
+	if sites == null or not sites.has_method("build"):
+		return
+	var spawned: Array = []
+	var result: Variant = sites.call("build", _site_root, world, RunState.run_seed, _map_preset)
+	if result is Array:
+		spawned = result
+	if RunState.is_tutorial() and spawned.size() > 1:
+		# Training gets one ground vehicle at the drop zone: enough to teach
+		# mounting without turning the tutorial into a driving lesson.
+		for i in range(1, spawned.size()):
+			var extra = spawned[i]
+			if extra is Node and is_instance_valid(extra):
+				(extra as Node).queue_free()
+		spawned = [spawned[0]]
+	for entry in spawned:
+		if entry != null and is_instance_valid(entry):
+			_rideables.append(entry)
+
+
+func get_rideables() -> Array:
+	return _rideables.duplicate()
+
+
+## Breachable caches at the POI clutter anchors the world builder exposes. Table
+## choice comes from POISpecs.loot_tier via ContentDB, so rare POIs pay better.
+## Capped and kept out of _loot_caches so tactical-map markers stay unchanged.
+func _spawn_loot_props() -> void:
+	_loot_props.clear()
+	if world == null or not is_instance_valid(world) or not world.has_method("get_loot_props"):
+		return
+	if RunState.is_tutorial():
+		return
+	var props: Array = world.call("get_loot_props")
+	if props.is_empty():
+		return
+	var luck := RunState.get_difficulty_loot_luck()
+	var spawned := 0
+	for prop in props:
+		if spawned >= MAX_LOOT_PROPS:
+			break
+		if not (prop is Dictionary):
+			continue
+		var entry: Dictionary = prop
+		var point: Vector3 = entry.get("position", Vector3.ZERO)
+		var table_id: StringName = &"poi_common"
+		if ContentDB.has_method("get_loot_table_for_poi_dict"):
+			table_id = StringName(ContentDB.call("get_loot_table_for_poi_dict", entry))
+		var payload: Dictionary = {}
+		if ContentDB.has_method("build_loot_cache_payload"):
+			var built: Variant = ContentDB.call("build_loot_cache_payload", _rng, table_id, threat, luck)
+			if built is Dictionary:
+				payload = built
+		if payload.is_empty():
+			payload = _build_cache_payload()
+		payload["loot_table"] = table_id
+		var cache: Node = LOOT_CACHE_SCRIPT.new()
+		cache.name = "LootProp_%02d" % spawned
+		_site_root.add_child(cache)
+		cache.call("setup", StringName("loot_prop_%d" % spawned), _ground_position(point), self, payload)
+		_loot_props.append(cache)
+		spawned += 1
+
+
+func get_loot_prop_caches() -> Array:
+	return _loot_props.duplicate()
+
+
+## Throttled vehicle HUD feed. The HUD panel is optional, so this is a no-op on
+## builds without features/vehicles.
+func _update_rideable_hud(delta: float) -> void:
+	_rideable_timer -= delta
+	if _rideable_timer > 0.0:
+		return
+	_rideable_timer = 0.1
+	var hud = _get_hud()
+	if hud == null:
+		return
+	var riding := false
+	var snapshot: Dictionary = {}
+	if player != null and is_instance_valid(player) and player.has_method("is_riding"):
+		riding = bool(player.call("is_riding"))
+		if riding:
+			var vehicle = player.call("get_rideable")
+			if vehicle != null and is_instance_valid(vehicle) and vehicle.has_method("get_hud_snapshot"):
+				var raw: Variant = vehicle.call("get_hud_snapshot")
+				if raw is Dictionary:
+					snapshot = raw
+			if snapshot.is_empty():
+				riding = false
+	if not riding:
+		if _vehicle_hud_open:
+			_vehicle_hud_open = false
+			if hud.has_method("hide_vehicle"):
+				hud.call("hide_vehicle")
+		return
+	if _vehicle_hud_open:
+		if hud.has_method("update_vehicle"):
+			hud.call("update_vehicle", snapshot)
+	else:
+		_vehicle_hud_open = true
+		if hud.has_method("show_vehicle"):
+			hud.call("show_vehicle", snapshot)
+
+
+## One music state machine for the whole run: exfil > boss > storm > combat >
+## the drop bed. set_music_track() is a no-op when the audio stream is missing.
+func _update_music_state(delta: float) -> void:
+	_music_timer -= delta
+	if _music_timer > 0.0:
+		return
+	_music_timer = 1.0
+	var track: StringName = &"deploy"
+	if RunState.extraction_state == &"holding":
+		track = &"exfil"
+	elif _has_live_boss():
+		track = &"boss"
+	elif RunState.storm_active:
+		track = &"storm"
+	elif _hostile_within(48.0):
+		track = &"combat"
+	_set_music_track(track)
+
+
+func _set_music_track(track: StringName) -> void:
+	if track == _music_track:
+		return
+	_music_track = track
+	if AudioDirector != null and AudioDirector.has_method("set_music_track"):
+		AudioDirector.call("set_music_track", track)
+
+
+## Weather/time ambience bed; guarded because the audio stream may be a synth
+## fallback or absent entirely in stripped builds.
+func _set_ambience(ambience_id: StringName) -> void:
+	if ambience_id == _ambience_id:
+		return
+	_ambience_id = ambience_id
+	if AudioDirector != null and AudioDirector.has_method("set_ambience"):
+		AudioDirector.call("set_ambience", ambience_id)
+
+
+func _hostile_within(radius: float) -> bool:
+	if player == null or not is_instance_valid(player):
+		return false
+	var limit := radius * radius
+	for hostile in _hostiles:
+		if hostile == null or not is_instance_valid(hostile):
+			continue
+		if hostile is Node3D and (hostile as Node3D).global_position.distance_squared_to(player.global_position) <= limit:
+			return true
+	return false
+
+
+## In-world insertion beat at the drop pod, played the moment the run goes live.
+func _play_insertion_cinematic() -> void:
+	if App == null or not App.has_method("play_cinematic"):
+		return
+	App.play_cinematic(&"insertion", {
+		"world": get_world(),
+		"player": player,
+		"origin": _spawn_position,
+	})
+
+
+## One confrontation shot per boss instance, never in training.
+func _play_boss_cinematic(boss: Node) -> void:
+	if boss == null or not is_instance_valid(boss):
+		return
+	if RunState.is_tutorial():
+		return
+	var key := boss.get_instance_id()
+	if _boss_cinematics.has(key):
+		return
+	_boss_cinematics[key] = true
+	if App == null or not App.has_method("play_cinematic"):
+		return
+	var display := String(boss.get_meta("enemy_name", "The Warden"))
+	var faction := ""
+	var phase := 1
+	var data = boss.get("enemy_data")
+	if data is Object and data != null:
+		var raw_faction: Variant = (data as Object).get("faction")
+		if raw_faction != null:
+			faction = String(raw_faction)
+	if boss.has_method("get_boss_phase"):
+		phase = int(boss.call("get_boss_phase"))
+	App.play_cinematic(&"boss", {
+		"world": get_world(),
+		"player": player,
+		"boss": boss,
+		"boss_name": display,
+		"boss_faction": faction,
+		"boss_phase": phase,
+	})
+
+
+## Escape. Runs while the world is still valid, then hands the ending back to
+## RunState so the results screen arrives after the shot.
+func _begin_exfil_cutscene() -> void:
+	if _exfil_cinematic_playing or _exfil_cinematic_done:
+		return
+	_exfil_cinematic_done = true
+	_exfil_cinematic_playing = true
+	ending = true
+	# Step off the ride so the escape shot frames the Warden, not a seat.
+	if player != null and is_instance_valid(player) and player.has_method("is_riding") and bool(player.call("is_riding")):
+		if player.has_method("exit_vehicle"):
+			player.call("exit_vehicle")
+	var played := false
+	if App != null and App.has_method("play_cinematic"):
+		played = bool(App.play_cinematic(&"exfil", {
+			"world": get_world(),
+			"player": player,
+			"ship": get_extraction_ship(),
+		}))
+	if played and App != null and App.has_method("is_cinematic"):
+		while is_instance_valid(self) and is_inside_tree() and bool(App.is_cinematic()):
+			await get_tree().process_frame
+		if not is_instance_valid(self) or not is_inside_tree():
+			return
+	_exfil_cinematic_playing = false
+	RunState.tick_extraction(0.0)
 
 
 func _get_hud() -> Node:
@@ -1717,6 +1982,8 @@ func _process(delta: float) -> void:
 	if not started or ending:
 		return
 	RunState.tick(delta)
+	_update_rideable_hud(delta)
+	_update_music_state(delta)
 	if _in_dungeon:
 		# The under-reach is a sealed encounter space: the run clock keeps
 		# ticking, but the surface director, storm and garrison staging pause.
@@ -1732,7 +1999,11 @@ func _process(delta: float) -> void:
 			_compass_timer = 0.5
 			_update_compass_markers()
 		if RunState.extraction_state == &"holding":
-			RunState.tick_extraction(delta)
+			if not _exfil_cinematic_done and RunState.extraction_timer <= 0.0:
+				_begin_exfil_cutscene()
+				return
+			if not _exfil_cinematic_playing:
+				RunState.tick_extraction(delta)
 		return
 	_compass_timer -= delta
 	if _compass_timer <= 0.0:
@@ -1751,6 +2022,13 @@ func _process(delta: float) -> void:
 		_prune_timer = 5.0
 		_prune_distant_hostiles()
 	if RunState.extraction_state == &"holding":
+		# The last tick of the hold is the escape: hand the view to the exfil
+		# cut-scene first, then let RunState end the run behind it.
+		if not _exfil_cinematic_done and RunState.extraction_timer <= 0.0:
+			_begin_exfil_cutscene()
+			return
+		if _exfil_cinematic_playing:
+			return
 		var ended := RunState.tick_extraction(delta)
 		if ended:
 			return
@@ -1776,6 +2054,8 @@ func _on_player_died() -> void:
 	if ending:
 		return
 	ending = true
+	if App != null and App.has_method("abort_cinematic"):
+		App.call("abort_cinematic")
 	await get_tree().create_timer(1.6).timeout
 	RunState.end_run(false, "You fell in the Reach.")
 	finished.emit(RunState.get_result_preview())

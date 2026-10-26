@@ -2,6 +2,10 @@ extends Node
 ## Central, read-only content catalog. All gameplay/UI resolves authored data
 ## through this service by StringName id.
 
+## Bundled glyph directory. Codex icon ids are adopted from world/vehicle specs
+## only when the referenced glyph exists here (see _resolve_icon).
+const ICON_DIR := "res://assets/icons/"
+
 var weapons: Dictionary = {}
 var abilities: Dictionary = {}
 var enemies: Dictionary = {}
@@ -13,6 +17,10 @@ var rift_mods: Dictionary = {}
 var mutators: Dictionary = {}
 var grenades: Dictionary = {}
 var item_templates: Dictionary = {}
+var items: Dictionary = {}
+var loot_tables: Dictionary = {}
+var poi_codex: Dictionary = {}
+var rideable_codex: Dictionary = {}
 var cosmetics: Dictionary = {}
 var affixes: Dictionary = {}
 var perks: Dictionary = {}
@@ -45,6 +53,10 @@ func load_content() -> void:
 	mutators = _index(data.mutators, "mutators")
 	grenades = _index(data.grenades, "grenades")
 	item_templates = _index(data.item_templates, "item_templates")
+	items = _index(data.items, "items")
+	loot_tables = _index(data.loot_tables, "loot_tables")
+	poi_codex = _index(data.poi_codex, "poi_codex")
+	rideable_codex = _index(data.rideable_codex, "rideable_codex")
 	cosmetics = _index(data.cosmetics, "cosmetics")
 	perks = _index(data.perks, "perks")
 	difficulties = _index(data.difficulties, "difficulties")
@@ -59,6 +71,7 @@ func load_content() -> void:
 		if affixes.has(affix_id):
 			content_errors.append("Duplicate affix id: %s" % affix_id)
 		affixes[affix_id] = affix
+	_enrich_codex_from_specs()
 	_validate_expected_counts()
 	initialized = true
 
@@ -77,6 +90,94 @@ func _index(items: Array, label: String) -> Dictionary:
 	return result
 
 
+## Overlays live world/vehicle specs onto the authored Codex fallbacks. Both
+## feature files belong to other streams and may be absent or mid-landing, so the
+## probes are ResourceLoader.exists()-guarded (through LootTables) and a missing
+## spec is a silent no-op. Counts never change here: specs only enrich the seven
+## POI and five rideable records authored in ContentLibrary.
+func _enrich_codex_from_specs() -> void:
+	for poi_id in poi_codex.keys():
+		var poi_entry: Dictionary = poi_codex[poi_id]
+		var poi_spec := LootTables.poi_spec(StringName(poi_id))
+		if not poi_spec.is_empty():
+			_merge_poi_spec(poi_entry, poi_spec)
+		var poi_table := LootTables.table_for_loot_tier(poi_entry.get("loot_tier", 1))
+		poi_entry["loot_table"] = String(poi_table)
+		poi_entry["loot_tier_label"] = _loot_table_label(poi_table)
+	for ride_id in rideable_codex.keys():
+		var ride_entry: Dictionary = rideable_codex[ride_id]
+		var vehicle_spec := LootTables.vehicle_spec(StringName(ride_id))
+		if not vehicle_spec.is_empty():
+			_merge_vehicle_spec(ride_entry, vehicle_spec)
+		ride_entry["stash_table"] = String(LootTables.VEHICLE_STASH)
+
+
+func _merge_poi_spec(entry: Dictionary, spec: Dictionary) -> void:
+	entry["source"] = "poi_specs"
+	var title := _spec_text(spec, ["title", "display_name"])
+	if not title.is_empty():
+		entry["display_name"] = title
+	var blurb := _spec_text(spec, ["blurb", "description"])
+	if not blurb.is_empty():
+		entry["blurb"] = blurb
+	# Specs author their own icon vocabulary; keep the authored fallback when the
+	# referenced glyph is not bundled so the Codex never renders a blank card.
+	var icon := _spec_text(spec, ["codex_icon", "icon"])
+	if not icon.is_empty():
+		entry["icon"] = _resolve_icon(icon, entry.get("icon", &"cache"))
+	for key in ["loot_tier", "radius", "pad", "interior", "garrison", "hazard", "biomes", "vehicle", "map_bias"]:
+		if spec.has(key):
+			entry[key] = spec[key]
+
+
+func _merge_vehicle_spec(entry: Dictionary, spec: Dictionary) -> void:
+	entry["source"] = "vehicle_specs"
+	var title := _spec_text(spec, ["name", "display_name"])
+	if not title.is_empty():
+		entry["display_name"] = title
+	var icon := _spec_text(spec, ["icon"])
+	if not icon.is_empty():
+		entry["icon"] = _resolve_icon(icon, entry.get("icon", &"cache"))
+	for key in ["kind", "seats", "max_speed", "accel", "turn_rate", "health", "mass", "hud_color"]:
+		if spec.has(key):
+			entry[key] = spec[key]
+	if spec.has("hud_color"):
+		entry["color"] = spec["hud_color"]
+
+
+## Uses a candidate icon id only when the bundled glyph exists, otherwise keeps
+## the authored fallback. Keeps Codex data resilient against spec-first icon ids.
+func _resolve_icon(candidate: String, fallback: Variant) -> StringName:
+	var text := candidate.strip_edges()
+	if not text.is_empty() and ResourceLoader.exists(ICON_DIR + text + ".svg"):
+		return StringName(text)
+	if fallback is String or fallback is StringName:
+		var fallback_text := String(fallback).strip_edges()
+		if not fallback_text.is_empty():
+			return StringName(fallback_text)
+	return &"cache"
+
+
+func _spec_text(spec: Dictionary, keys: Array) -> String:
+	for key in keys:
+		var value: Variant = spec.get(key, "")
+		if value is String or value is StringName:
+			var text := String(value).strip_edges()
+			if not text.is_empty():
+				return text
+	return ""
+
+
+func _loot_table_label(table_id: StringName) -> String:
+	match table_id:
+		&"poi_rare":
+			return "Rare"
+		&"vehicle_stash":
+			return "Vehicle"
+		_:
+			return "Common"
+
+
 func _validate_expected_counts() -> void:
 	var expected := {
 		"weapons": weapons.size(),
@@ -90,6 +191,10 @@ func _validate_expected_counts() -> void:
 		"mutators": mutators.size(),
 		"grenades": grenades.size(),
 		"item_templates": item_templates.size(),
+		"items": items.size(),
+		"loot_tables": loot_tables.size(),
+		"poi_codex": poi_codex.size(),
+		"rideable_codex": rideable_codex.size(),
 		"cosmetics": cosmetics.size(),
 		"perks": perks.size(),
 		"difficulties": difficulties.size(),
@@ -120,6 +225,14 @@ func _validate_expected_counts() -> void:
 		content_errors.append("Expected 8 mutators, got %d" % expected["mutators"])
 	if expected["grenades"] != 3:
 		content_errors.append("Expected 3 grenades, got %d" % expected["grenades"])
+	if expected["items"] != 10:
+		content_errors.append("Expected 10 authored loot items, got %d" % expected["items"])
+	if expected["loot_tables"] != 3:
+		content_errors.append("Expected 3 loot tables, got %d" % expected["loot_tables"])
+	if expected["poi_codex"] != 7:
+		content_errors.append("Expected 7 POI codex entries, got %d" % expected["poi_codex"])
+	if expected["rideable_codex"] != 5:
+		content_errors.append("Expected 5 rideable codex entries, got %d" % expected["rideable_codex"])
 	if expected["perks"] != 24:
 		content_errors.append("Expected 24 passive perks, got %d" % expected["perks"])
 	if expected["difficulties"] != 4:
@@ -243,8 +356,142 @@ func _validate_expected_counts() -> void:
 			content_errors.append("World event %s has an empty icon" % event_id)
 		if float(event.get("weight", 0.0)) <= 0.0:
 			content_errors.append("World event %s must author a positive weight" % event_id)
+	_validate_loot_items()
+	_validate_loot_tables()
+	_validate_codex()
 	for error in content_errors:
 		push_error("[ContentDB] " + error)
+
+
+## Authored loot cargo must be fully described and reachable from at least one
+## table; an orphaned item would be invisible content.
+func _validate_loot_items() -> void:
+	var referenced: Dictionary = {}
+	for table_value in loot_tables.values():
+		if not (table_value is Dictionary):
+			continue
+		for entry in (table_value as Dictionary).get("entries", []):
+			if not (entry is Dictionary):
+				continue
+			var kind := StringName((entry as Dictionary).get("kind", &"loot"))
+			if kind == &"loot":
+				referenced[StringName((entry as Dictionary).get("id", &""))] = true
+	for item_id in items.keys():
+		var item_value: Variant = items[item_id]
+		if not (item_value is LootItemData):
+			content_errors.append("Loot item %s is not a LootItemData resource" % item_id)
+			continue
+		var loot := item_value as LootItemData
+		if loot.display_name.strip_edges().is_empty():
+			content_errors.append("Loot item %s is missing a display name" % item_id)
+		if loot.description.strip_edges().is_empty():
+			content_errors.append("Loot item %s is missing a tooltip blurb" % item_id)
+		if String(loot.icon).strip_edges().is_empty():
+			content_errors.append("Loot item %s is missing an icon" % item_id)
+		if loot.rarity < 0 or loot.rarity > 4:
+			content_errors.append("Loot item %s has rarity outside 0..4" % item_id)
+		if loot.value <= 0:
+			content_errors.append("Loot item %s must author a positive value" % item_id)
+		if loot.stack_max < 1:
+			content_errors.append("Loot item %s must author a stack_max >= 1" % item_id)
+		if loot.get_rarity_mult() <= 0.0:
+			content_errors.append("Loot item %s has a non-positive rarity multiplier" % item_id)
+		if not referenced.has(item_id):
+			content_errors.append("Loot item %s is not referenced by any loot table" % item_id)
+
+
+## Every weighted entry must resolve to a real catalog id, so a rolled cache can
+## never hand back an empty item.
+func _validate_loot_tables() -> void:
+	for table_id in loot_tables.keys():
+		var table_value: Variant = loot_tables[table_id]
+		if not (table_value is Dictionary):
+			content_errors.append("Loot table %s is not a dictionary" % table_id)
+			continue
+		var table := table_value as Dictionary
+		for field in ["display_name", "label", "prompt", "entries", "salvage", "rarity_floor"]:
+			if not table.has(field):
+				content_errors.append("Loot table %s is missing field '%s'" % [table_id, field])
+		if String(table.get("display_name", "")).strip_edges().is_empty():
+			content_errors.append("Loot table %s is missing a display name" % table_id)
+		var entries: Array = table.get("entries", [])
+		if entries.size() < 3:
+			content_errors.append("Loot table %s needs at least 3 weighted entries" % table_id)
+		var total_weight := 0.0
+		for entry_value in entries:
+			if not (entry_value is Dictionary):
+				content_errors.append("Loot table %s has a non-dictionary entry" % table_id)
+				continue
+			var entry := entry_value as Dictionary
+			var entry_id := StringName(entry.get("id", &""))
+			if entry_id == &"":
+				content_errors.append("Loot table %s has an entry without an id" % table_id)
+				continue
+			var weight := float(entry.get("weight", 0.0))
+			if weight <= 0.0:
+				content_errors.append("Loot table %s entry %s must author a positive weight" % [table_id, entry_id])
+				continue
+			total_weight += weight
+			match StringName(entry.get("kind", &"loot")):
+				&"loot":
+					if not items.has(entry_id):
+						content_errors.append("Loot table %s references unknown loot item '%s'" % [table_id, entry_id])
+				&"gear":
+					if not item_templates.has(entry_id):
+						content_errors.append("Loot table %s references unknown gear template '%s'" % [table_id, entry_id])
+				&"weapon":
+					if not weapons.has(entry_id):
+						content_errors.append("Loot table %s references unknown weapon '%s'" % [table_id, entry_id])
+				_:
+					content_errors.append("Loot table %s entry %s has an unknown kind" % [table_id, entry_id])
+		if total_weight <= 0.0:
+			content_errors.append("Loot table %s has no positive entry weights" % table_id)
+		var salvage_band: Array = table.get("salvage", [])
+		if salvage_band.size() != 2 or int(salvage_band[0]) <= 0 or int(salvage_band[1]) < int(salvage_band[0]):
+			content_errors.append("Loot table %s must author a valid [min, max] salvage band" % table_id)
+		var rarity_floor := int(table.get("rarity_floor", 0))
+		if rarity_floor < 0 or rarity_floor > 4:
+			content_errors.append("Loot table %s has rarity_floor outside 0..4" % table_id)
+		var cores_chance := float(table.get("cores_chance", 0.0))
+		if cores_chance < 0.0 or cores_chance > 1.0:
+			content_errors.append("Loot table %s has cores_chance outside 0..1" % table_id)
+
+
+## Codex records are presentation data, but they must stay resolvable: an entry
+## with a missing blurb/icon/loot table would render a broken card in-game.
+func _validate_codex() -> void:
+	for poi_id in poi_codex.keys():
+		var poi_value: Variant = poi_codex[poi_id]
+		if not (poi_value is Dictionary):
+			content_errors.append("POI codex entry %s is not a dictionary" % poi_id)
+			continue
+		var poi_entry := poi_value as Dictionary
+		if String(poi_entry.get("display_name", "")).strip_edges().is_empty():
+			content_errors.append("POI codex entry %s is missing a display name" % poi_id)
+		if String(poi_entry.get("blurb", "")).strip_edges().is_empty():
+			content_errors.append("POI codex entry %s is missing a blurb" % poi_id)
+		if String(poi_entry.get("icon", "")).strip_edges().is_empty():
+			content_errors.append("POI codex entry %s is missing an icon" % poi_id)
+		var poi_table := StringName(poi_entry.get("loot_table", &""))
+		if poi_table == &"" or not loot_tables.has(poi_table):
+			content_errors.append("POI codex entry %s references unknown loot table '%s'" % [poi_id, poi_table])
+	for ride_id in rideable_codex.keys():
+		var ride_value: Variant = rideable_codex[ride_id]
+		if not (ride_value is Dictionary):
+			content_errors.append("Rideable codex entry %s is not a dictionary" % ride_id)
+			continue
+		var ride_entry := ride_value as Dictionary
+		if String(ride_entry.get("display_name", "")).strip_edges().is_empty():
+			content_errors.append("Rideable codex entry %s is missing a display name" % ride_id)
+		if String(ride_entry.get("blurb", "")).strip_edges().is_empty():
+			content_errors.append("Rideable codex entry %s is missing a blurb" % ride_id)
+		if String(ride_entry.get("icon", "")).strip_edges().is_empty():
+			content_errors.append("Rideable codex entry %s is missing an icon" % ride_id)
+		if String(ride_entry.get("kind", "")).strip_edges().is_empty():
+			content_errors.append("Rideable codex entry %s is missing a kind" % ride_id)
+		var stash_table := StringName(ride_entry.get("stash_table", &""))
+		if stash_table == &"" or not loot_tables.has(stash_table):
+			content_errors.append("Rideable codex entry %s references unknown stash table '%s'" % [ride_id, stash_table])
 
 
 func get_weapon(id: StringName) -> WeaponData:
@@ -293,6 +540,138 @@ func get_perk(id: StringName) -> PerkData:
 
 func get_item_template(id: StringName) -> ItemTemplate:
 	return item_templates.get(id) as ItemTemplate
+
+
+## Authored loot cargo (never equippable). Returns null for unknown ids so callers
+## can fail soft; ItemFactory.describe() also accepts the raw item dictionaries.
+func get_item(id: StringName) -> LootItemData:
+	return items.get(id) as LootItemData
+
+
+func get_items() -> Array[LootItemData]:
+	var out: Array[LootItemData] = []
+	for item_value in items.values():
+		if item_value is LootItemData:
+			out.append(item_value as LootItemData)
+	out.sort_custom(func(a: LootItemData, b: LootItemData) -> bool:
+		if a.rarity == b.rarity:
+			return a.display_name < b.display_name
+		return a.rarity < b.rarity
+	)
+	return out
+
+
+## Authored loot table by id ({} when absent). The returned dictionary is a copy:
+## callers may mutate their payload but never the catalog.
+func get_loot_table(id: StringName) -> Dictionary:
+	var table_value: Variant = loot_tables.get(id, null)
+	if table_value is Dictionary:
+		return (table_value as Dictionary).duplicate(true)
+	return {}
+
+
+func get_loot_table_ids() -> Array[StringName]:
+	var out: Array[StringName] = []
+	for table_id in loot_tables.keys():
+		out.append(StringName(table_id))
+	out.sort_custom(func(a: StringName, b: StringName) -> bool: return String(a) < String(b))
+	return out
+
+
+func get_loot_tables() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for table_id in get_loot_table_ids():
+		var table := get_loot_table(table_id)
+		if not table.is_empty():
+			out.append(table)
+	return out
+
+
+## Rolls one weighted entry from a table id into an item dictionary. Deterministic
+## for a given RNG state; returns {} when the table is unknown.
+func roll_loot_table(
+	rng: RandomNumberGenerator,
+	table_id: StringName,
+	luck: float = 0.0,
+	level: int = 1,
+	uid: int = 0
+) -> Dictionary:
+	return LootTables.roll_item(rng, table_id, luck, level, uid)
+
+
+## Resolves the loot table a POI type should roll (POISpecs loot_tier first,
+## authored Codex tier second, poi_common fallback).
+func get_loot_table_for_poi(poi_type: StringName) -> StringName:
+	return LootTables.table_for_poi(poi_type)
+
+
+func get_loot_table_for_poi_dict(poi: Dictionary) -> StringName:
+	return LootTables.table_for_poi_dict(poi)
+
+
+## Builds a LootCache-compatible payload for a table id. Deployment owns spawn
+## placement; this owns the payload so the loot curve stays next to the tables.
+func build_loot_cache_payload(
+	rng: RandomNumberGenerator,
+	table_id: StringName,
+	threat: int = 1,
+	luck: float = 0.0,
+	uid: int = 0
+) -> Dictionary:
+	return LootTables.build_cache_payload(rng, table_id, threat, luck, uid)
+
+
+## Codex record for a POI type. Spec-enriched at boot when poi_specs.gd exists.
+func get_poi_codex(id: StringName) -> Dictionary:
+	var entry: Variant = poi_codex.get(id, null)
+	if entry is Dictionary:
+		return (entry as Dictionary).duplicate(true)
+	return {}
+
+
+func get_poi_codex_entries() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for poi_id in poi_codex.keys():
+		var entry := get_poi_codex(StringName(poi_id))
+		if not entry.is_empty():
+			out.append(entry)
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return String(a.get("display_name", "")) < String(b.get("display_name", ""))
+	)
+	return out
+
+
+## Codex record for a rideable archetype, enriched with the live vehicle spec.
+func get_rideable_codex(id: StringName) -> Dictionary:
+	var entry: Variant = rideable_codex.get(id, null)
+	if entry is Dictionary:
+		return (entry as Dictionary).duplicate(true)
+	return {}
+
+
+func get_rideable_codex_entries() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for ride_id in rideable_codex.keys():
+		var entry := get_rideable_codex(StringName(ride_id))
+		if not entry.is_empty():
+			out.append(entry)
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return String(a.get("display_name", "")) < String(b.get("display_name", ""))
+	)
+	return out
+
+
+## Loot item ids that a given table can roll (loot entries only, not gear/weapons).
+func get_loot_table_item_ids(table_id: StringName) -> Array[StringName]:
+	var table := get_loot_table(table_id)
+	var out: Array[StringName] = []
+	for entry in table.get("entries", []):
+		if not (entry is Dictionary):
+			continue
+		if StringName((entry as Dictionary).get("kind", &"loot")) != &"loot":
+			continue
+		out.append(StringName((entry as Dictionary).get("id", &"")))
+	return out
 
 
 func get_cosmetic(id: StringName) -> CosmeticData:

@@ -17,11 +17,14 @@ Boot
        -> UIRoot (CanvasLayer, ui/ui_root.gd)
             -> 13 screens + loading/pause/results overlays (includes Quick Deploy preflight)
             -> HUD (ui/hud/hud_root.gd) while deployed
+            -> CinematicOverlay > CutsceneDirector (deployment/insertion/exfil/boss)
+       -> AudioDirector (autoload) -> SfxCatalog + MusicDirector + AudioPacks
        -> Deployment (Node3D, features/run/deployment.gd)
-            -> WorldBuilder (features/world, planet/map presets)
+            -> WorldBuilder (features/world, planet/map presets, POISpecs)
                  -> EnvironmentDirector -> DayNightCycle + WeatherSystem
                  -> WorldFluid (water/lava surfaces)
             -> DungeonRuntime x2-3 (features/dungeon, remote world offsets)
+            -> VehicleSites -> 5 Rideable archetypes (features/vehicles)
             -> Player
                  -> StatsComponent / HealthComponent
                  -> WeaponController
@@ -42,7 +45,7 @@ The project follows signals up, calls down. UI reads state through signals and e
 | ContentDB | Validates and indexes authored Resources by StringName; O(1) lookup; rarity and discipline helpers |
 | ProfileState | Persistent meta progression, save/load/migration, inventory, loadout, base, squad, pets, cosmetics, records |
 | RunState | Per-deployment seed, RNG, timer, objectives, satchel, Rift Mods, kills, exfil state and result construction; no Node references |
-| AudioDirector | Procedural sound bank, ambient music loop, buses, 2D/3D SFX pools, volume settings |
+| AudioDirector | Facade over `features/audio/`: 113-id procedural SFX catalog with worker-thread synthesis, 8-cue music director (`set_music_track`, 1.6 s two-player crossfade), looping ambience bed, five buses (Music/SFX/UI/Ambience/Vehicles) + `AudioEffectLimiter` on Master, optional CC0 Kenney overrides, volume settings |
 | App | Boot, settings, input map, scene/UI routing, deployment lifecycle, pause, debug capture hooks |
 
 Autoload order: EventBus -> ContentDB -> ProfileState -> RunState -> AudioDirector -> App.
@@ -55,6 +58,14 @@ Content is authored in `features/content/content_library.gd` and materialized as
 - 37 enemy entries (20 base + 11 elites + 6 bosses)
 - 4 allies, 3 pets, 8 base modules, 13 contracts (7 classic + 6 staged)
 - 12 Rift Mods, 8 mutators, 3 grenades, 10 gear templates
+- **10 authored salvage cargo items** (`field_ration`, `beacon_flare`, `alloy_plate`, `stim_injector`,
+  `ammo_crate`, `repair_kit`, `fuel_cell`, `map_intel`, `relic_shard`, `trophy_core`), each a
+  `LootItemData` with rarity/value/stack/effects; they are recovered cargo, never equipped
+- **3 loot tables** (`poi_common`, `poi_rare`, `vehicle_stash`) authored beside the items and rolled by
+  `features/loot/loot_tables.gd`; `poi_rare`/`vehicle_stash` keep generated gear/weapon rarity floors,
+  every table has a salvage band, a cores chance and an unknown-table fallback to `poi_common`
+- **7 POI Codex records** (second-wave sites) and **5 rideable Codex records**, surfaced by
+  `ContentDB.get_poi_codex_entries()` / `get_rideable_codex_entries()` and the Codex Sites/Rideables tabs
 - 6 suits, 8 dyes, 8 weapon skins, 3 pet shells, 8 affixes
 - 4 named run difficulties (read-only dictionaries indexed by ContentDB), each linked to one of 12 map presets
 - 5 planets, 12 map presets: a planet owns biome names/palette, day/night sky keyframes, weather pool,
@@ -66,7 +77,7 @@ Content is authored in `features/content/content_library.gd` and materialized as
   also plain read-only dictionaries; the mode drives clock, storm fraction, start time, density,
   elite odds, reward, hostile budget and bonus loot
 
-Typed Resource types: WeaponData, AbilityData, PerkData, EnemyData, AllyData, PetData, ItemTemplate, BaseModuleData, ContractData, RiftModData, MutatorData, GrenadeData, CosmeticData. Difficulty presets, map presets, planets, weather, game modes and dungeon themes are plain read-only data to avoid global class-cache dependencies. Each difficulty carries map_preset, mission_sites, side_caches, bounties, objective_guards, max_hostiles, enemy_health_mult, enemy_damage_mult, loot_luck, storm_fraction, director_interval_scale and extraction_scale. Each map preset carries a seed salt, biome rotation, scatter/roadside/extra-POI budgets, environment overrides and an optional `weather_pool`. Each game mode carries run_duration, time_scale, start_time, storm_fraction, density_mult, elite_bonus, reward_mult, max_hostiles_delta, loot_bonus, tag, clock, icon, colour and description. Each world event carries id, title, text, icon, colour and weight. `ContentDB.get_map_preset()` enriches the authored preset with its planet, all weather definitions (so forced weather works on any map) and merged fluid configuration so `WorldBuilder` receives everything through `apply_preset()` without an autoload dependency. `ContractData.stages` adds optional multi-stage operations; `BaseModuleData.icon` and `ContractData.icon/color` feed the icon-first UI. `EnemyData.habitat` drives water/lava-aware spawning.
+Typed Resource types: WeaponData, AbilityData, PerkData, EnemyData, AllyData, PetData, ItemTemplate, LootItemData, BaseModuleData, ContractData, RiftModData, MutatorData, GrenadeData, CosmeticData. Difficulty presets, map presets, planets, weather, game modes and dungeon themes are plain read-only data to avoid global class-cache dependencies. Each difficulty carries map_preset, mission_sites, side_caches, bounties, objective_guards, max_hostiles, enemy_health_mult, enemy_damage_mult, loot_luck, storm_fraction, director_interval_scale and extraction_scale. Each map preset carries a seed salt, biome rotation, scatter/roadside/extra-POI budgets, environment overrides and an optional `weather_pool`. Each game mode carries run_duration, time_scale, start_time, storm_fraction, density_mult, elite_bonus, reward_mult, max_hostiles_delta, loot_bonus, tag, clock, icon, colour and description. Each world event carries id, title, text, icon, colour and weight. `ContentDB.get_map_preset()` enriches the authored preset with its planet, all weather definitions (so forced weather works on any map) and merged fluid configuration so `WorldBuilder` receives everything through `apply_preset()` without an autoload dependency. `ContractData.stages` adds optional multi-stage operations; `BaseModuleData.icon` and `ContractData.icon/color` feed the icon-first UI. `EnemyData.habitat` drives water/lava-aware spawning.
 
 Runtime item instances are save-friendly dictionaries: `{uid, kind, base_id, slot, rarity, level, affixes[]}`. ItemFactory generates, describes, resolves and values them; WeaponData/ItemTemplate remain immutable definitions.
 
@@ -107,7 +118,8 @@ WorldBuilder generates a deterministic region from a seed:
 
 1. Data-only worker phases produce base landforms, biome weights, POI anchors, roads, a map image and chunk vertex data.
 2. Main-thread commits build 8x8 terrain chunks (ArrayMesh + trimesh collision), flattened POI pads, roads/pylons and merged POI geometry.
-3. About 5,000 MultiMesh scatter instances and horizon landmarks are added.
+3. About 5,000–9,000 MultiMesh scatter instances, five POI-local clutter batches, and horizon
+   landmarks are added.
 4. A procedural sky, directional sun, fill light, dust fog and volumetric effects are installed.
 5. A NavigationRegion3D is baked asynchronously from static colliders in group nav_source.
 
@@ -123,18 +135,38 @@ Expansion world systems:
   `build_final_fields()` carves the bowls and emits a fluid mask, `WorldFluid` builds one surface mesh
   per basin with water/lava shaders, and `sample_fluid(xz)` answers gameplay queries analytically.
   Player and EnemyAgent use the query for swim drag and lava damage; scatter skips fluid cells.
+- **POI kits and POISpecs**: 20 authored POI types (13 original + 7 second-wave: `foundry_hall`,
+  `hab_cluster`, `comms_array`, `fuel_depot`, `clinic_shelter`, `research_lab`, `water_works`), placed from
+  21 `POI_LAYOUT` entries plus 3 exfil pads = 24 base POIs (up to 28 with preset extras). New kits author
+  203–381 primitives each and keep the merged-mesh draw-call model. `features/world/poi_specs.gd`
+  (`class_name POISpecs`) is the thread-safe 20-row data table (`all()/has_spec()/get_spec()/validate()`
+  plus `TYPE_IDS`/`VEHICLES`/`HAZARDS`) that loot, `VehicleSites`, the Codex and the tactical map read
+  instead of hard-coding type names. The world suite asserts `validate()` is empty, every layout/extra
+  type has a spec, and the spec radius/pad mirror the layout.
+- **POI detail and clutter**: the 13 original kits received detail passes; `WorldScatter` adds a seeded
+  POI-local clutter pass (barrels/crates/pallets/spools/debris) as 5 MultiMesh batches at 20 pieces per POI
+  (~480 at density 1.0) and records ~2 loot anchors per POI. New getters: `get_loot_props()` (52 anchors
+  on the world-test preset), `get_clutter_piece_count()`, `get_path_weight_at()`; `get_pois()` now carries
+  `pad_radius`.
 - **Enterable interiors**: WorldStructures builds hollow rooms with 4.2 m doorways and 3.4 m+ ceilings
-  (wide enough for the 1.3 m navmesh agent radius), interior lights and `InteriorSpawn` markers; the
-  derelict freighter POI is fully enterable. `WorldBuilder.get_pois()` exposes `interior` and
-  `dungeon_anchor`; the navmesh bakes through the doorways.
+  (wide enough for the 1.3 m navmesh agent radius), interior lights and `InteriorSpawn` markers; **15 POIs**
+  expose enterable interiors on the base 24-POI layout (14 interior types, with faction_camp appearing
+  twice), **16** on the world-test preset (its extra faction camp) and up to **17** when four preset extras
+  roll interior kits; the derelict freighter is fully enterable. `WorldBuilder.get_pois()` exposes
+  `interior` and `dungeon_anchor`; the navmesh bakes through the doorways.
 - **Environment systems**: `WorldEnvironment` creates an `EnvironmentDirector` (single writer for sky,
   sun, fill and fog), a `DayNightCycle` (planet day length, four keyframes, moving sun) and a
   `WeatherSystem` (seeded state machine, particle layer, lightning, vision/move multipliers). The
   director also supports an indoor override used by dungeons.
 
-Public API: generate(seed), sample_height(Vector2), get_spawn_points(), get_exfil_points(), get_pois(), get_roadside_points(), get_nav_region(), get_map_texture(), get_world_seed(), plus get_biome_names(), get_fluid_basins(), sample_fluid(), get_fluid_root(), get_environment_director(), get_day_night_cycle(), get_weather_system(), get_interior_pois(). generation_progress, generation_finished and navigation_ready drive loading.
+Public API: generate(seed), sample_height(Vector2), get_spawn_points(), get_exfil_points(), get_pois(), get_loot_props(), get_clutter_piece_count(), get_path_weight_at(), get_roadside_points(), get_nav_region(), get_map_texture(), get_world_seed(), plus get_biome_names(), get_fluid_basins(), sample_fluid(), get_fluid_root(), get_environment_director(), get_day_night_cycle(), get_weather_system(), get_interior_pois(). generation_progress, generation_finished and navigation_ready drive loading.
 
-Measured generation after the expansion (default frontier, no preset): about 1.1 s total, nav bake about 190 ms, 16 POIs, 14 roadside outbuildings, 3 exfils, 2 spawns, 64 chunks, about 204,800 terrain triangles and 3,165 navigation polygons. Preset generation adds optional extra POIs and raises roadside/scatter budgets; the observed default world-test budget remains well inside the 180 s suite timeout.
+Measured generation on the world-test preset (Verdant Verge, seed 12345, headless): **1,365 ms total**
+(phase A 134 ms, phase B 393 ms), **245 ms nav bake**, **26 POIs** (24 base + 2 preset extras),
+**16 enterable interiors**, 12 roadside outbuildings, 3 exfils, 2 spawns, 64 chunks / 204,800 terrain
+triangles, 3,252 navmesh polygons, 6,449 scatter instances in 17 MultiMesh batches, 598 POI-clutter
+instances in 5 batches, 52 loot-prop anchors and 656 nodes. Preset budgets stay well inside the 180 s
+suite timeout.
 
 ## 7. Enemies
 
@@ -160,6 +192,10 @@ Deployment owns one operation:
 - App.start_deployment(contract, seed, threat, mutators, difficulty_id, mode_id, map_id) selects a named difficulty, game mode and optional explicit map; RunState.start_run stores them, resolves the map preset, reward/density/elite/max-hostile/loot helpers and time scale (2x for Quick). Mode `run_duration`, `storm_fraction`, `start_time` and `starting_weather` are applied here; `get_run_duration()` is the single denominator for timer, fraction, storm and safe radius.
 - WorldBuilder.apply_preset(ContentDB.get_map_preset(...)) runs before WorldBuilder.generate(); the world seed is mixed with the preset seed salt. This selects biome rotation, extra POIs, roadside/scatter density and the sky/fog/sun mood.
 - Player, companions, objectives, exfils, Rift Shrine, loot caches, bounty elites, POI beacons and enemies are spawned with difficulty-scaled counts. Four nearest POIs are garrisoned immediately; the rest stage in when the player comes within 140 m. Contract sites scale 3–6 with difficulty, plus side objectives (caches/bounties/shrine). Non-boss hostiles farther than 300 m are pruned every 5 s.
+- **Rideables**: `_spawn_rideables()` calls `VehicleSites.build(_site_root, world, RunState.run_seed, _map_preset)` (optional by script path, one car only in Field Training), exposes `get_rideables()`, and feeds the vehicle HUD at 10 Hz. Mount/dismount is player-owned: `Player.enter_vehicle/exit_vehicle` reparent onto the seat, lock weapons/abilities, keep the camera, and emit `EventBus.vehicle_mounted/dismounted`; `KEY_T` whistles the nearest steed. Dungeon entry is blocked while riding and the exfil cut-scene force-dismounts first.
+- **Loot props**: `_spawn_loot_props()` puts `LootCache` nodes on up to `MAX_LOOT_PROPS` (10) of the world's clutter anchors, choosing the table through `ContentDB.get_loot_table_for_poi_dict()` and the payload through `build_loot_cache_payload()`.
+- **Cut-scenes**: `_start_deployment` plays `insertion` once the run is live; `_register_boss` plays `boss` once per boss instance (not in training); the exfil hold, once its timer reaches zero, plays `exfil` and only then calls `RunState.tick_extraction(0.0)` so `end_run` happens after the cinematic. Every path guards against dungeon/tutorial/death and aborts cleanly on teardown.
+- **Music**: `_update_music_state()` polls at 1 Hz and picks `exfil > boss > storm > combat > deploy` (combat = hostile within 48 m), while menus/hub/loading/results use `set_music_mood`.
 - ready_to_play(player) tells App to show the HUD and capture the mouse.
 - `_process` ticks the run timer through RunState (game-time scaled), storm damage, compass/tracker markers, extraction holds, scheduled world events, a reinforcement director after 40 s and four timed endgame pressure events. Director/extraction timers apply RunState.time_scale and difficulty scales.
 - Deployment.get_tactical_data() feeds the HUD minimap/overlay with the map texture, map/mode identity, player pose, objective/building/cache/bounty markers, hostiles, allies and extraction/storm state. _update_compass_markers() also feeds HUD mission trackers (contract + side objectives) with positions and progress.
@@ -196,12 +232,50 @@ starter reward without counting a deployment or death.
 
 UIRoot extends CanvasLayer and owns theme, screen stack, overlays and HUD. App interacts through public methods: show_main_menu, show_hub, show_loading, show_deployment_hud, show_results, show_pause, refresh. `show_loading(title, progress, brief)` passes a `LoadingBrief.build(...)` payload (operation, map/planet, mode/difficulty, seed and boss dossier) resolved before `RunState.start_run()`. The HUD is a separate Control bound to Player and EventBus.
 
-- Loading cinema: `LoadingScreen` is a four-act drop feed instead of a static progress page — **01 Threat Signature** (code-drawn boss dossier with weak points, phases, integrity/shield bars and counter-intel), **02 Rift Breach**, **03 Drop Descent** and **04 Touchdown**. Shots are `UICinemaShot` subclasses (`CinemaBossShot`, `CinemaRiftShot`, `CinemaDescentShot`, `CinemaTouchdownShot`) drawing from plain primitives with map/planet sky colours and the actual boss selected for the planet roster + seed. A `CinemaFilmOverlay` supplies letterbox, scrims, scanlines, grain and vignette. Act timing is progress-aware with minimum dwell and a hard cap; the live progress/step/field-note rail never blocks the loader. Space/Enter or the rail button skips to a static briefing; reduced motion opens the same static briefing, and both remain fully testable without a rendered 3D scene.
+- Loading cinema: `LoadingScreen` is a **five-act** drop feed instead of a static progress page — **01 Threat Signature** (code-drawn boss dossier with weak points, phases, integrity/shield bars and counter-intel), **02 Rift Breach**, **03 Drop Descent**, **04 Insertion** (the new `CinemaInsertionShot` ramp/rise act) and **05 Touchdown**, with per-act audio stingers. Shots are `UICinemaShot` subclasses (`CinemaBossShot`, `CinemaRiftShot`, `CinemaDescentShot`, `CinemaInsertionShot`, `CinemaTouchdownShot`) drawing from plain primitives with map/planet sky colours and the actual boss selected for the planet roster + seed. A `CinemaFilmOverlay` supplies letterbox, scrims, scanlines, grain and vignette. Act timing is progress-aware with minimum dwell and a hard cap; the live progress/step/field-note rail never blocks the loader. Space/Enter or the rail button skips to a static briefing; reduced motion opens the same static briefing, and both remain fully testable without a rendered 3D scene.
+- Cut-scenes: `UIRoot` lazily owns one `CinematicOverlay` (z_index 30, `PROCESS_MODE_ALWAYS`, mouse STOP) that hosts a `CutsceneDirector`; `App.play_cinematic(id, opts)` / `App.is_cinematic()` / `App.abort_cinematic()` own playback and emit `EventBus.cinematic_state_changed`. The director is data-driven (duration, rail/orbit/fixed camera keyframes, caption, radio, sfx, music, per-beat HUD visibility), caps every timeline at **12 s**, collapses to a **1.2 s static card** under reduced motion, and restores HUD/mouse/input on every exit path. Four ids: `deployment` (6 s recap card), `insertion` (4 s), `exfil` (6 s, runs before `RunState.tick_extraction(0.0)` ends the run) and `boss` (4 s, once per boss instance, skipped in training). With no 3D world the overlay renders a code-drawn 2D card, which is what the headless cutscene suite uses.
+- Vehicle HUD: `ui/hud/hud_vehicle.gd` (`class_name UIVehiclePanel`) is a code-drawn Control — speed dial with max-speed arc, vehicle name/kind, hull bar with numeric readout, boost bar (labelled STAMINA on the horse) and gear/gait. `HUD.show_vehicle/update_vehicle/hide_vehicle(snapshot)` drive it from Deployment's 10 Hz feed; `configure()`/`get_snapshot()`/`is_visible_panel()` are the test surface.
+- Codex: the existing tabs gain **Sites** (POI records enriched from `POISpecs`) and **Rideables** (records enriched from the live vehicle specs), alongside Planets, Weather, Operations and Dungeons.
 - Theme: code-built with Sora/Inter/JetBrains Mono variable fonts and semantic type variations.
 - Screens: data-driven from ContentDB/ProfileState; Quick Deploy preflight offers planet portraits, map thumbnails, four difficulties, 12 maps, 5 planets, 5 mode cards, weather forecast and target intel; hub offers the same choices plus contract/mutator selection; skills shows level-gated mechanics and perks with discipline/ability medallions; results shows map/mode identity, mode clock and run duration, XP breakdown and level-up progression; loadout/locker/skills/squad use reusable code-drawn art (`UIItemArt`, `UIWardenPreview.compact`, `UIIconMedallion`, `UIAllyPortrait`, `UIPetArt`), and the outpost renders an 8×8 isometric diorama with `UIModuleArt` children. The menu language is image-first, with explanatory copy in tooltips.
-- HUD: signals plus 10 Hz snapshot fallback; top-left minimap (polled at 5 Hz) with building/cache/bounty markers, M-key tactical map, procedural precision scope, objectives, FIELD OPS tracker (distance/direction, max 4 + overflow), compass markers with shapes per kind, squad status, boss bar, subtitles/toasts, interaction, downed and KIA states. Timer caption carries map/threat/mode identity. `EventBus.world_event` drives a queued, auto-hiding **Reach Event banner** (icon, title, wrapped description, colour, reduce-motion aware) exposed as `get_world_event_panel()`.
+- HUD: signals plus 10 Hz snapshot fallback; top-left minimap (polled at 5 Hz) with building/cache/bounty markers, M-key tactical map, procedural precision scope, objectives, FIELD OPS tracker (distance/direction, max 4 + overflow), compass markers with shapes per kind, squad status, boss bar, subtitles/toasts, interaction, downed and KIA states. **Riding swaps the weapon block for the vehicle panel** (speed/hull/boost/gear) via the Deployment feed. Timer caption carries map/threat/mode identity. `EventBus.world_event` drives a queued, auto-hiding **Reach Event banner** (icon, title, wrapped description, colour, reduce-motion aware) exposed as `get_world_event_panel()`.
 - Settings: the Display card exposes window mode, resolution, V-Sync, render scale, anti-aliasing, frame-rate cap, quality preset and interface scale through App option getters; rows carry `meta("setting_key")` and test accessors (`get_control`, `get_option_control`).
 - Accessibility: UI scale, high contrast, reduced motion, subtitles, damage numbers, minimap toggle, key rebinding (including C crouch alternate) and gamepad focus.
+
+## 10b. Audio architecture
+
+`autoload/audio_director.gd` is a facade; the sound design lives in three RefCounted modules so heavy
+work can run off the main thread and the public API stays small:
+
+- `features/audio/sfx_catalog.gd` — **113 recipe rows** `[kind, freq, dur, vol, bus, opts?]` plus one
+  renderer per synth kind (`shot`, `boom`, `impact`, `engine`, `wind`, `hoof`, `stinger`, ...). It never
+  touches the SceneTree, AudioServer or a Resource: `build_batch(ids, out)` fills a plain dictionary of
+  PCM, and AudioDirector turns that into `AudioStreamWAV` on the main thread. Loops fold a 0.14 s tail into
+  the head so the wrap is sample-continuous. Headless resolves ids lazily on demand.
+- `features/audio/music_director.gd` — **8 cues + `silent`** (`menu`, `hub`, `deploy`, `combat`, `boss`,
+  `exfil`, `storm`, `results`). Each cue is a data row (bpm, bars, root, chord progression, pad/bass/pulse/
+  percussion/noise mix, `mix_db`) rendered by additive stems with a 0.6 s seam wrap; two
+  `AudioStreamPlayer`s on the Music bus crossfade over `fade` seconds (default **1.6 s**), and repeat
+  switches are no-ops. Cues are generated by `WorkerThreadPool` tasks; `silent` fades everything out.
+- `features/audio/audio_packs.gd` — scans `res://assets/audio/cc0/**` (wav/ogg/mp3), normalises filename
+  stems and maps vendor names onto catalog ids with a specific-before-generic alias table (25 ids mapped
+  across 188 curated files in this build). Overrides win over the synth; a missing/unimported file or
+  unknown stem silently falls back, and overrides can never add ids outside the 113-id catalog.
+- Bus layout: `Music`, `SFX`, `UI`, `Ambience`, `Vehicles` and an `AudioEffectLimiter` on `Master`
+  (threshold -3 dB, ceiling -0.3 dB, soft clip -1.5 dB). `set_bus_volume()` maps linear 0..1 to dB with
+  mute at zero; the options screen routes each slider to its bus.
+- Runtime API: `play_ui`, `play_sfx`, `play_3d`, `play_varied` (deterministic ±6% pitch and -1.5/+0.5 dB
+  jitter), `play_loop_3d(id, node)` (returns the player; parented to the emitter), `set_ambience` (0.6 s
+  crossfade bed), `set_music_track(track, fade)`, `set_music_mood(mood)` (legacy mood → cue map),
+  `has_stream`/`get_stream`/`get_catalog`/`get_stats`, and the `music_track_changed`/`catalog_ready`
+  signals. Unknown ids are silent no-ops; game code should guard optional ids with `has_stream()`.
+- Music state: menus/hub/loading/results use `set_music_mood`; Deployment polls a one-second state machine
+  (`exfil > boss > storm > combat > deploy`, combat = hostile within 48 m); cut-scene beats may pin a cue
+  for their duration. SFX ids used by vehicles/cut-scenes (`engine_rig`, `engine_bike`, `engine_plane`,
+  `engine_ship`, `hoof_*`, `boost`, `brake`, `horn`, `wind_loop`, `boss_roar`, `exfil_liftoff`,
+  `ramp_hiss`, `radio_chirp`, `insertion_thud`, `ui_skip`, ...) are all catalog recipes.
+- Shutdown: `_exit_tree` stops every pooled voice and the ambience bed, drops stream references,
+  waits for outstanding synth tasks and clears the CC0 pack cache so force-quit suites release resources.
 
 ## 11. Save format
 
@@ -220,31 +294,54 @@ Settings stored in user://settings.cfg: volumes, FOV, mouse/ADS sensitivity, inv
 ## 13. Threading and performance notes
 
 - World data generation runs in worker threads; SceneTree mutations happen on the main thread.
-- POI/terrain geometry is merged and collision simplified per POI; scatter uses MultiMesh.
+- SFX sample generation runs in `WorkerThreadPool` buckets (sorted by authored duration, 2–4 tasks) and music
+  cues are rendered the same way, so the first frame only pays for bus/pool setup. `AudioDirector.get_stats()`
+  reports catalog/stream/override counts for diagnostics.
+- POI/terrain geometry is merged and collision simplified per POI; scatter and POI clutter use MultiMesh.
 - Enemy perception/path retargeting and ally scans are timer-based, not per-frame.
 - Tracers, impacts, damage labels and explosions are short-lived nodes; high-volume projectile visuals could be pooled further.
 - Target: 60 FPS at 1080p on a mid-range desktop GPU. The reference machine is an RTX 3060; D3D12 render smoke tests complete without renderer errors. A formal FPS capture was not automated in this build.
 
 ## 14. Tests
 
-| Suite | Command | Current result |
-|---|---|---|
-| Project boot | `--headless --path . --quit-after 240` | exit 0, no script errors |
-| Shooting/input regression | `--headless --path . --quit-after 4000 -- --shoot-smoke` | PASS - real App boot, sniper fire, four weapon slots, knife, abilities, grenade, reload, swaps and commands |
-| Inventory regression | `--headless --path . --quit-after 4000 -- --inventory-smoke` | PASS - paused field inventory, four weapon rows, satchel, clean close |
-| Gameplay integration | `--headless --path . res://tests/integration_test.tscn` | PASS - includes map/planet/weather data, fluid sampling, interiors and dungeon entry/exit |
-| Death/downed/results | `--headless --path . res://tests/death_test.tscn` | PASS |
-| Under-reach dungeons | `--headless --path . res://tests/dungeon_test.tscn` | PASS - all 3 themes, rooms, nav, collision, encounter, boss, loot |
-| Field Training | `--headless --path . res://tests/tutorial_test.tscn` | PASS - five stages, exfil, persistence |
-| World contract test | `--headless --path . res://features/world/world_test.tscn` | PASS - 17+ POIs, interiors, fluid basins, nav, map texture, environment systems |
-| Planet variants | `--headless --path . res://tests/world_variants_test.tscn` | PASS - original and new planet/map presets, fluids, weather, day/night |
-| Enemy AI test | `--headless --path . --script res://features/ai/ai_test.gd` | 134/134 checks PASS |
-| Companion test | `--headless --path . --script res://features/companions/companions_test.gd` | 78/78 checks PASS |
-| Progression/content | `--headless --path . --script res://tests/progression_test.gd` | PASS - counts, planets/maps/weather/dungeons, modes, contracts, world events, layouts, display settings |
-| UI harness | `--headless --path . res://ui/ui_demo.tscn --quit-after 2400` | PASS - includes map/planet/mode preflight, loading-cinema acts/boss dossier/skip/reduced motion, art components, settings display, Reach Event HUD |
-| Icon catalog | `--headless --path . --script res://tests/ui_icons_test.gd` | PASS - every referenced icon (including the 12 new SVGs) resolves |
+`tests/suites.json` is the single source of truth for the **18 headless suites**; `tests/run_all.ps1`
+reads it, and `.github/workflows/tests.yml` fans the same list out in CI. Add a suite to the manifest, not
+to either runner. Commands below are the manifest args appended to `godot --headless --path .`; logs land
+in `tests/artifacts/logs/<suite>.out.txt` / `.err.txt`.
 
-Run all 14 suites with `tests/run_all.ps1`. See QA_REPORT.md for logs and screenshot evidence.
+| Suite | Command args | Covers |
+|---|---|---|
+| boot | `--quit-after 240` | clean App boot, no `SCRIPT ERROR`/`ERROR:` |
+| shooting | `--quit-after 4000 -- --shoot-smoke` | real-boot fire, four weapon slots, knife, abilities, grenade, reload, swap, squad/pet commands |
+| inventory | `--quit-after 4000 -- --inventory-smoke` | real-boot I-key overlay, pause, four weapon rows, satchel, clean close |
+| integration | `--quit-after 4000 res://tests/integration_test.tscn` | 118 checks: content counts, run identity, HUD, fluids/interiors, dungeon entry/exit, exfil |
+| death | `--quit-after 4000 res://tests/death_test.tscn` | 9 checks: downed, revive, bleedout, result path |
+| dungeon | `--quit-after 6000 res://tests/dungeon_test.tscn` | 57 checks: 3 themes, rooms, nav/collision, encounter, boss, loot |
+| tutorial | `--quit-after 9000 res://tests/tutorial_test.tscn` | 20 checks: five stages, exfil, persistence |
+| world | `--quit-after 4000 res://features/world/world_test.tscn` | 20 POI types, >=24 base POIs, 16 interiors, clutter/loot anchors, POISpecs, fluids, nav, determinism replay |
+| world_variants | `--quit-after 12000 res://tests/world_variants_test.tscn` | 168 checks: planet/map presets, fluid rules, weather, day/night |
+| ai | `--script res://features/ai/ai_test.gd` | 134 checks: perception, FSM, damage, statuses, elites, boss phases |
+| companions | `--script res://features/companions/companions_test.gd` | 78 checks: four Wardens, three Driftlings, commands, revive, HUD payload |
+| progression | `--script res://tests/progression_test.gd` | 975 checks: counts, items/loot tables/Codex, save v5, display settings, mode math |
+| ui | `--quit-after 2400 res://ui/ui_demo.tscn` | 130 checks: screens, preflight, loading cinema, Codex tabs, settings, Reach Event HUD |
+| ui_icons | `--script res://tests/ui_icons_test.gd` | 148 checks: every referenced icon resolves with pixels |
+| audio | `--script res://tests/audio_test.gd` | 280 checks: 113-id catalog, bus routing/limiter, cues/crossfade, ambience, CC0 fallback |
+| vehicles | `--quit-after 6000 res://tests/vehicles_test.tscn` | 244 checks: five archetypes/specs/layers, mount-dismount, motion, horse gaits, weapon lock, HUD |
+| cutscenes | `--quit-after 6000 res://tests/cutscene_test.tscn` | 78 checks: four ids, beats, skip, cap, reduce-motion card, bus signal, no-3D fallback |
+| assets | `--script res://tests/assets_test.gd` | 2,110 checks: manifests/sha256/sizes, licenses, payload cap, particle fallback, CombatVFX |
+
+Run the aggregate gate:
+
+```powershell
+$env:APPDATA = "D:\godotGa\game\tests\.appdata"   # sandbox-friendly Godot user dir
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests\run_all.ps1
+```
+
+The runner fails a suite on `SCRIPT ERROR`, on any engine `ERROR:` line (it filters the known
+"Failed to read the root certificate store" sandbox probe), and on a missing `RESULT: PASS`/`PASS` marker.
+`-Quick` runs the boot/shooting/inventory/integration/death/ui/ui_icons subset. The runner-level state of
+the 0.3.0 gate — including shutdown findings and their resolution — is tracked in
+[QA_REPORT.md](QA_REPORT.md); the table above records each suite's own assertions.
 
 ## 15. Packaging
 
@@ -285,7 +382,41 @@ The `tools/play.ps1` launcher and `RIFTWARD.cmd` remain the way to run directly 
 - Add a weapon: add an entry to ContentLibrary._weapons(), add viewmodel style handling in WeaponModelBuilder if unique, update counts in ContentDB, run the integration suite.
 - Add an ability: add AbilityData to _abilities(), implement its effect_id in AbilityManager._execute_effect(), assign an unlock level.
 - Add an enemy: add EnemyData to _enemies() and optionally extend EnemyVisuals for a new style; EnemyAgent handles the rest. Optional `behavior_flags` entries such as `volatile_death` are read by EnemyAgent.
-- Add a POI kit: extend WorldStructures with a builder and add its type to the POI placement pool in WorldBuilder. Roadside kits are selected from the `_roadside_points` list.
+- Add a POI / rideable / cut-scene / loot table / asset pack (the 0.3.0 paths) — the four recipes below.
+- Add a POI kit: add a builder branch in `features/world/world_structures.gd` (reuse the MeshKit helper
+  vocabulary and `_interior_shell`/`_interior_partition`/`_crates`/`_pad` for interiors and pads), add a
+  `POISpecs` row in `features/world/poi_specs.gd` with a unique id and its radius/pad, add the type to
+  `WorldBuilder.POI_LAYOUT` (and `EXTRA_POI_KINDS` if presets may append it), add a Codex record in
+  `ContentLibrary` if it should appear in Sites, and update `ContentDB` expected counts. `features/world/
+  world_test.gd` will fail until the spec/layout radii mirror each other and the kit authors enough
+  primitives. Roadside kits are selected from the `_roadside_points` list.
+- Add a rideable: subclass `features/vehicles/vehicle_base.gd` (`Rideable`), implement `_make_spec()`
+  (id/name/kind/seats/max_speed/accel/turn_rate/health/mass/icon/hud_color + tuning), override the body
+  geometry/step hooks (`_configure_body`, `_collision_extents`, `_seat_offset`, `_exit_offset`,
+  `_step_vehicle`, `_engine_id`), add the script to `VehicleSites.VEHICLE_SCRIPTS` and a role row to
+  `VehicleSites.ROLE_PREFERENCES`, and add `vehicle_id` to the relevant `POISpecs` rows. The vehicle gets
+  groups `rideable`/`interactable`, layer 11 and the mount/HUD plumbing for free. Add a spec to a
+  `rideable_codex` record and a `tests/vehicles_test.gd` case.
+- Add a cut-scene: add the id to `CutsceneDirector.CUTSCENE_IDS`, add an `_raw_timeline()` branch (beats
+  with duration/camera/caption/radio/sfx/music/hud_hidden; tokens `{boss}`, `{map}`, `{planet}`,
+  `{phase}` are filled from `play()` opts), keep the total under `HARD_CAP` (12 s), and call
+  `App.play_cinematic(id, opts)` from the trigger. Add a `tests/cutscene_test.gd` case; the overlay and
+  App already own HUD/mouse restore, reduce-motion and the 2D fallback.
+- Add a loot table: add a dictionary to `ContentLibrary._loot_tables()` (`id`, `display_name`, `label`,
+  `prompt`, `salvage` band, `cores_chance`, `rarity_floor`, `entries` with `id`/`weight` and optional
+  `kind`/`amount`), point the relevant `POISpecs.loot_tier` or deployment code at it through
+  `ContentDB.get_loot_table_for_poi()`, and update the expected count (3) in `ContentDB` +
+  `tests/progression_test.gd`. `LootTables` handles weights, rarity rolls and the payload.
+- Add an asset pack: add a row to the `$Packs` table in `tools/fetch_asset_packs.ps1` (title, Asset
+  Library id/url, source, curated file list, target tree), run the script, verify with
+  `-Offline`, and document it in `docs/ASSET_PACKS.md` + `docs/THIRD_PARTY_NOTICES.md`. Keep each pack's
+  `LICENSE.txt`, keep the curated total under the 18 MB cap, and do not rename curated files by hand
+  (manifests are path-keyed). Particle packs must keep `logical_names` in sync with
+  `ParticleLibrary.TEXTURE_FILES`; audio packs map by filename stem through `AudioPacks.PATTERNS`.
+- Add an SFX recipe or music cue: append a row to `SfxCatalog.RECIPES` (`[kind, freq, dur, vol, bus,
+  opts?]`) and, if gameplay calls it, expose it behind `AudioDirector.has_stream()`; music cues go in
+  `MusicDirector.MusicSynth.TRACKS` + `ORDER` (bpm/bars/root/prog/pad/bass/pulse/perc/noise/mix_db).
+  `tests/audio_test.gd` asserts every required call-site id resolves, so add coverage there too.
 - Add a mechanic unlock: add an entry to `features/player/mechanic_unlocks.gd`, then gate the input/UI through `ProfileState.is_mechanic_unlocked()`.
 - Add a difficulty: add a dictionary preset (with map_preset + mission/side-cache/hostile/scale fields) to ContentLibrary._difficulties() and update the expected count in ContentDB.
 - Add a map preset: add a preset dictionary to ContentLibrary._map_presets(), point a difficulty at it, and keep the expected count at 12 in ContentDB. WorldBuilder.apply_preset() consumes it before generation.

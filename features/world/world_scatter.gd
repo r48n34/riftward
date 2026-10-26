@@ -13,6 +13,10 @@ const Palette := preload("res://features/world/world_palette.gd")
 const ROCK_ASHEN := Color(0.58, 0.41, 0.26)
 const ROCK_VERDANT := Color(0.34, 0.46, 0.40)
 const ROCK_GLASS := Color(0.72, 0.74, 0.72)
+## Authored POI-local clutter props (one MultiMesh batch per entry).
+const CLUTTER_KINDS: Array[StringName] = [&"barrel", &"crate", &"pallet", &"spool", &"debris"]
+## Base clutter pieces per POI at scatter_density 1.0 (24 POIs => 480/map).
+const CLUTTER_PER_POI := 20
 
 var _builder: Node
 var _materials: Dictionary
@@ -22,6 +26,8 @@ var _world_seed := 0
 var _stats := {}
 var _collision_faces := PackedVector3Array()
 var _flora_groves: Array[Vector2] = []
+## Loot-prop anchors surfaced to LootCache: [{position, kind, poi_index, poi_type}]
+var _loot_props: Array[Dictionary] = []
 
 
 func build(scatter_root: Node3D, builder: Node, materials: Dictionary, world_seed: int, density: float) -> Dictionary:
@@ -43,6 +49,7 @@ func build(scatter_root: Node3D, builder: Node, materials: Dictionary, world_see
 	_scatter_arches(density)
 	_scatter_shore(density)
 	_scatter_path_pylons()
+	_scatter_poi_clutter(density)
 
 	# One merged collision body for every collidable scatter prop.
 	if _collision_faces.size() >= 9:
@@ -497,6 +504,160 @@ func _scatter_path_pylons() -> void:
 				travelled += spacing
 			carry = travelled - seg_len
 	_commit(mesh, xforms, colors, "PathPylons", false)
+
+
+# =============================================================================
+# POI-local clutter (barrels, crates, pallets, cable spools, debris)
+# =============================================================================
+## Spawns authored salvage clutter in a ring just outside every POI pad.
+##
+## The ring deliberately starts at `pad_radius + 2.5 m` so props never block a
+## doorway, interior spawn or the flattened combat pad, and it stays inside the
+## POI footprint. Fluid basins, roads and steep ground are rejected. Every POI
+## seeds its own RandomNumberGenerator from world_seed + POI index, so clutter is
+## deterministic and independent of the earlier scatter passes.
+##
+## A couple of barrels/crates per POI are also recorded as loot-prop anchors and
+## exposed through `get_loot_props()` for LootCache.
+func _scatter_poi_clutter(density: float) -> void:
+	var pois: Array = _builder.get_pois()
+	_loot_props.clear()
+	if pois.is_empty():
+		return
+	var meshes: Array[Mesh] = []
+	for kind in CLUTTER_KINDS.size():
+		meshes.append(_build_clutter_mesh(kind))
+	var barrel_xf: Array[Transform3D] = []
+	var crate_xf: Array[Transform3D] = []
+	var pallet_xf: Array[Transform3D] = []
+	var spool_xf: Array[Transform3D] = []
+	var debris_xf: Array[Transform3D] = []
+	var barrel_col: Array[Color] = []
+	var crate_col: Array[Color] = []
+	var pallet_col: Array[Color] = []
+	var spool_col: Array[Color] = []
+	var debris_col: Array[Color] = []
+	var xforms: Array = [barrel_xf, crate_xf, pallet_xf, spool_xf, debris_xf]
+	var colors: Array = [barrel_col, crate_col, pallet_col, spool_col, debris_col]
+	var count_per_poi := maxi(12, int(round(CLUTTER_PER_POI * density)))
+	var total := 0
+	var rng := RandomNumberGenerator.new()
+	for poi_index in pois.size():
+		var poi: Dictionary = pois[poi_index]
+		var center: Vector3 = poi.get("position", Vector3.ZERO)
+		var radius := float(poi.get("radius", 30.0))
+		var pad := float(poi.get("pad_radius", radius * 0.6))
+		var ring_min := pad + 2.5
+		var ring_max := maxf(ring_min + 3.0, minf(radius - 2.0, pad + 13.0))
+		rng.seed = hash("clutter:%d:%d" % [_world_seed, poi_index])
+		var placed := 0
+		var attempts := 0
+		while placed < count_per_poi and attempts < count_per_poi * 6:
+			attempts += 1
+			var ang := rng.randf() * TAU
+			var dist := rng.randf_range(ring_min, ring_max)
+			var xz := Vector2(center.x + cos(ang) * dist, center.z + sin(ang) * dist)
+			if int(_builder.sample_fluid(xz).get("type", 0)) != 0:
+				continue
+			if float(_builder.get_path_weight_at(xz)) > 0.02:
+				continue
+			var h: float = _builder.sample_height(xz)
+			var hx: float = _builder.sample_height(xz + Vector2(2.0, 0.0)) - _builder.sample_height(xz - Vector2(2.0, 0.0))
+			var hz: float = _builder.sample_height(xz + Vector2(0.0, 2.0)) - _builder.sample_height(xz - Vector2(0.0, 2.0))
+			if absf(hx) + absf(hz) > 1.8:
+				continue
+			var kind := placed % CLUTTER_KINDS.size()
+			var scale := rng.randf_range(0.85, 1.18)
+			var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(scale, scale * rng.randf_range(0.9, 1.12), scale))
+			var xf := Transform3D(basis, Vector3(xz.x, h, xz.y))
+			var xf_list: Array[Transform3D] = xforms[kind]
+			var col_list: Array[Color] = colors[kind]
+			xf_list.append(xf)
+			col_list.append(_clutter_color(kind, rng))
+			xforms[kind] = xf_list
+			colors[kind] = col_list
+			total += 1
+			if placed == 2 or placed == 11:
+				_loot_props.append({
+					"position": Vector3(xz.x, h + 0.55, xz.y),
+					"kind": CLUTTER_KINDS[kind],
+					"poi_index": poi_index,
+					"poi_type": StringName(poi.get("type", "")),
+				})
+			placed += 1
+	for kind in CLUTTER_KINDS.size():
+		_commit(meshes[kind], xforms[kind] as Array[Transform3D], colors[kind] as Array[Color], "POIClutter_%s" % String(CLUTTER_KINDS[kind]).capitalize(), false)
+	_stats["clutter_instances"] = total
+	_stats["clutter_batches"] = CLUTTER_KINDS.size()
+	_stats["clutter_loot_props"] = _loot_props.size()
+
+
+## Loot-prop anchors from the POI clutter pass, ready for LootCache.
+## Each entry is `{position: Vector3, kind: StringName, poi_index: int,
+## poi_type: StringName}`. `position` is on the ground, raised by the prop
+## height so a cache can sit on top of the crate/barrel. Call after build().
+func get_loot_props() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for prop in _loot_props:
+		out.append((prop as Dictionary).duplicate(true))
+	return out
+
+
+## Total clutter instances spawned (sum of the MultiMesh counts).
+func get_clutter_piece_count() -> int:
+	return int(_stats.get("clutter_instances", 0))
+
+
+func _build_clutter_mesh(kind: int) -> Mesh:
+	var kit := MeshKit.new()
+	kit.set_materials(_materials)
+	match kind:
+		0: # Barrel: ribbed cylinder with a lid.
+			kit.cylinder(0.42, 0.42, 1.08, 8, Vector3(0.0, 0.54, 0.0), &"clutter", Vector3.ZERO, false)
+			kit.torus(0.38, 0.46, Vector3(0.0, 0.74, 0.0), &"clutter", Vector3.ZERO, false)
+			kit.torus(0.38, 0.46, Vector3(0.0, 0.34, 0.0), &"clutter", Vector3.ZERO, false)
+			kit.cylinder(0.4, 0.4, 0.06, 8, Vector3(0.0, 1.1, 0.0), &"clutter", Vector3.ZERO, false)
+		1: # Crate: banded box.
+			kit.box(Vector3(0.92, 0.92, 0.92), Vector3(0.0, 0.46, 0.0), &"clutter", Vector3.ZERO, false)
+			kit.box(Vector3(0.96, 0.1, 0.96), Vector3(0.0, 0.26, 0.0), &"clutter", Vector3.ZERO, false)
+			kit.box(Vector3(0.96, 0.1, 0.96), Vector3(0.0, 0.72, 0.0), &"clutter", Vector3.ZERO, false)
+			kit.box(Vector3(0.94, 0.08, 0.94), Vector3(0.0, 0.95, 0.0), &"clutter", Vector3.ZERO, false)
+		2: # Pallet: deck boards over blocks.
+			kit.box(Vector3(1.2, 0.1, 1.0), Vector3(0.0, 0.16, 0.0), &"clutter", Vector3.ZERO, false)
+			for s in 3:
+				kit.box(Vector3(1.2, 0.06, 0.22), Vector3(0.0, 0.26, -0.38 + float(s) * 0.38), &"clutter", Vector3.ZERO, false)
+			for s in 3:
+				kit.box(Vector3(0.16, 0.12, 1.0), Vector3(-0.5 + float(s) * 0.5, 0.06, 0.0), &"clutter", Vector3.ZERO, false)
+		3: # Cable spool: two discs on a hub with cross bars.
+			kit.cylinder(1.0, 1.0, 0.14, 12, Vector3(-0.45, 1.0, 0.0), &"clutter", Vector3(0.0, 0.0, PI * 0.5), false)
+			kit.cylinder(1.0, 1.0, 0.14, 12, Vector3(0.45, 1.0, 0.0), &"clutter", Vector3(0.0, 0.0, PI * 0.5), false)
+			kit.cylinder(0.34, 0.34, 0.95, 8, Vector3(0.0, 1.0, 0.0), &"clutter", Vector3(0.0, 0.0, PI * 0.5), false)
+			for s in 3:
+				var sang := TAU * float(s) / 3.0
+				kit.box(Vector3(0.1, 0.7, 0.1), Vector3(cos(sang) * 0.62, 1.0, sin(sang) * 0.62), &"clutter", Vector3(0.0, 0.0, PI * 0.5), false)
+		_: # Debris: broken plating.
+			kit.flat_shading = true
+			kit.prism(Vector3(1.1, 0.45, 0.8), Vector3(0.0, 0.2, 0.0), &"clutter", Vector3(0.1, 0.4, 0.05), false)
+			kit.box(Vector3(0.7, 0.12, 1.2), Vector3(0.55, 0.1, 0.2), &"clutter", Vector3(0.0, 0.6, 0.12), false)
+			kit.cylinder(0.12, 0.2, 0.7, 6, Vector3(-0.5, 0.2, -0.3), &"clutter", Vector3(0.2, 0.3, PI * 0.5), false)
+	return kit.build_mesh()
+
+
+func _clutter_color(kind: int, rng: RandomNumberGenerator) -> Color:
+	var base := Color(0.6, 0.55, 0.44)
+	match kind:
+		0:
+			base = [Color(0.52, 0.25, 0.13), Color(0.33, 0.36, 0.38), Color(0.74, 0.68, 0.52)][rng.randi_range(0, 2)]
+		1:
+			base = [Color(0.62, 0.56, 0.42), Color(0.46, 0.27, 0.15), Color(0.40, 0.43, 0.42)][rng.randi_range(0, 2)]
+		2:
+			base = Color(0.44, 0.34, 0.22)
+		3:
+			base = Color(0.36, 0.39, 0.41)
+		_:
+			base = Color(0.46, 0.44, 0.40)
+	var v := rng.randf_range(0.78, 1.12)
+	return Color(clampf(base.r * v, 0.0, 1.0), clampf(base.g * v, 0.0, 1.0), clampf(base.b * v, 0.0, 1.0))
 
 
 # =============================================================================

@@ -16,11 +16,11 @@ Approved pillars:
 
 | Plan item | Target | Delivered | Notes |
 |---|---|---|---|
-| Seeded world | 1.8 km2, 3 biomes, 16+ POIs | DONE | 64 terrain chunks, 12 map presets across 5 planets, 17+ POIs, 16–22 roadside outbuildings, 3 exfil pads, 2 drop zones, 5k–9k scatter instances, async navmesh |
+| Seeded world | 1.8 km2, 3 biomes, 16+ POIs | DONE | 64 terrain chunks, 12 map presets across 5 planets, **24 base POIs from 20 authored types** (up to 28), 16–22 roadside outbuildings, 3 exfil pads, 2 drop zones, 5k–9k scatter instances + ~480 POI-clutter pieces, async navmesh |
 | Planets / maps | 5 planets, 12 maps | DONE | Meridian-9, Cinder-4, Thalassa-2, Frost-9, Nyx-12; 12 selectable presets with difficulty default and explicit override |
 | Weather / day-night | seeded weather + cycle | DONE | 18 weather states, preset-level weather pools, particles/lightning/vision modifier, per-planet day length and 4 sky keyframes, HUD clock |
 | Display settings | window/resolution/AA/quality | DONE | Window mode, resolution, V-Sync, render scale, anti-aliasing, FPS cap, quality preset and interface scale; applied live, headless-guarded |
-| Enterable interiors | buildings + ship | DONE | 7 enterable POIs incl. derelict freighter; 4.2 m doorways, interior spawns, navmesh inside |
+| Enterable interiors | buildings + ship | DONE | **15 enterable POIs on the base layout (16 in the world-test preset)** incl. the derelict freighter and all seven second-wave kits; 4.2 m doorways, interior spawns, navmesh inside |
 | Water / lava | basins + hazards | DONE | seeded carved basins, water/lava shaders, map tint, swim/heat rules, enemy reactions |
 | Dungeons | 3 themes, 2–3 per run | DONE | procedural 5–9-room under-reach instances, private navmesh, boss/loot, storm paused inside |
 | Field Training | first-time stages | DONE | 5 guided stages, HUD card, skip/replay, persistent completion |
@@ -41,9 +41,13 @@ Approved pillars:
 | Stats | Levels, attributes, derived stats | DONE | Level 1-30, 4 attributes, gear/perk/base modifiers, crit/armor/shield/status, hazard resist and swim speed |
 | Outpost / buildings | 8 modules x 3 tiers | DONE | Upgrades, power, Nexus gating, 8×8 isometric diorama with layout v2 + save v5 migration; persistent |
 | Visual-first UI | Image-first armory, preflight, outpost, codex | DONE | UIIconMedallion/UIItemArt/UIPlanetPortrait/UIMapThumbnail/UIAllyPortrait/UIPetArt/UIModuleArt, compact Warden previews, 12 new SVG icons |
-| Modern UI | 10+ screens, HUD, accessibility | DONE | 13 screens + HUD + field inventory; display settings, map/planet/mode selection, Codex weather/operations, Reach Event banner, weather/clock/hazard/dungeon/training HUD |
-| Procedural audio | SFX + music | DONE | Layered synthesized SFX, 2D/3D pools, looping ambient bed |
-| Tests / QA | Automated and visual | DONE | 14 suites pass; UI screenshots + deployment captures |
+| Modern UI | 10+ screens, HUD, accessibility | DONE | 13 screens + HUD (incl. vehicle panel) + field inventory; display settings, map/planet/mode selection, Codex Sites/Rideables/Weather/Operations, Reach Event banner, weather/clock/hazard/dungeon/training HUD |
+| Rideables | 5 archetypes | DONE | `rig`, `hoverbike`, `airplane`, `spaceship`, `horse`; shared raycast physics, mount/dismount, weapon lock, vehicle HUD, deterministic sites, layer 11 |
+| Cut-scenes | 4 authored shots | DONE | `deployment`, `insertion`, `exfil`, `boss`; data-driven beats, 12 s cap, skip, reduce-motion card, App/EventBus ownership, 5th loading-cinema act |
+| Sites and loot | new kits + cargo tables | DONE | 7 second-wave kits + detail pass, 5 clutter MultiMesh kinds, 10 cargo items, 3 loot tables, 7 POI + 5 rideable Codex records |
+| Procedural audio | SFX + music | DONE | **113 SFX ids**, 8 music cues + silent with 1.6 s crossfade, five buses + master limiter, worker-thread synthesis, ambience/looped/varied API |
+| CC0 art | optional asset packs | DONE | 7 Kenney CC0 packs / 267 curated files / 5.96 MiB (particle + prototype textures, interface/UI/sci-fi/impact audio, music jingles), manifests + fetcher; geometry/materials/shaders stay procedural |
+| Tests / QA | Automated and visual | DONE | **18/18 suites pass** (previous 14 + audio/vehicles/cutscenes/assets); run_all.ps1 reads tests/suites.json; fresh D3D12 render smoke for the 0.3.0 menu/insertion/drop-zone captures, existing UI/world captures retained |
 | Standalone export | Optional | DONE | `export_presets.cfg` (Windows Desktop, x86_64) + `tools/build_export.ps1` / `BUILD.cmd`; boot-verified headless |
 | Daily seed / map overlay | Stretch | DONE (map) | Topographic minimap and M-key overlay delivered; daily seeds remain future work |
 | Grenade selection | 3 types | PARTIAL | Content authored for frag/shock/veil; quick-throw currently uses frag only |
@@ -64,6 +68,7 @@ Approved pillars:
 | M7 Frontier Update | Planets/maps, weather/day-night, interiors, fluids, dungeons, staged contracts, Field Training, expanded content | COMPLETE |
 | M8 UI/content expansion | Display settings, visual-first Loadout/Locker/Skills/Squad/Outpost/Quick Deploy, outpost layout v2, extreme weather, modes, planets/maps, events, targets, missions, 12 icons, docs/tests/screenshots | COMPLETE |
 | M9 0.2.0 release | Versioning across configs and docs, changelog and dev log, rebuilt Windows export, tagged GitHub release | COMPLETE |
+| M10 Sound & Motion | Audio Director 2.0, 7 second-wave kits + clutter, 10 cargo items + 3 loot tables + Codex tabs, 5 rideables, 4 cut-scenes, 7 CC0 packs + particle FX, 18-suite gate, 0.3.0 docs/release | COMPLETE |
 
 ## 4. Architecture decisions that survived implementation
 
@@ -85,8 +90,12 @@ Approved pillars:
 - Factions: enemy AI contract and combat test 134/134; enemy content totals 37 (20 base + 11 elites + 6 bosses).
 - Companions: Warden/pet contract, commands, revive and manager test 78/78.
 - Progression: counts and new ids, four-slot starter kit, v2 and v4→v5 save migration, outpost layout validation, viewmodel coverage, bindings, map presets, five-mode math (quick 2x, gauntlet 14-minute/storm, onslaught density/reward/elite, blackout start), enemy catalog, zoom values, mechanic/perk gates, XP math, display setting options and pressure curve.
-- UI: navigation (including Quick Deploy), all screens, visual-first art components, settings display controls, outpost diorama geometry, HUD (minimap/map/scope/aim sight/tracker/Reach Event banner), paused inventory overlay, accessibility, profile mutations and the four-act deployment drop-feed cinema; 130 checks, 21 screen captures + feature captures.
-- World: 17+ POIs, 12 presets across 5 planets, 3 exfils, 2 spawns, navmesh, collision and map texture; generation about 1.1 s.
+- UI: navigation (including Quick Deploy), all screens, visual-first art components, settings display controls, outpost diorama geometry, HUD (minimap/map/scope/aim sight/tracker/Reach Event banner/vehicle panel), paused inventory overlay, accessibility, profile mutations, the five-act deployment drop-feed cinema and the Codex Sites/Rideables tabs; 130 checks.
+- World: 20 POI types / 24 base POIs (26 on the world-test preset), 3 exfils, 2 spawns, 15–16 enterable interiors, 5 POI-clutter batches, 52 loot-prop anchors, POISpecs validation, navmesh, collision, map texture and determinism replay; generation 1,365 ms incl. a 245 ms nav bake.
+- Audio: 113-id catalog, bus layout + master limiter, cue switching/crossfade, ambience and CC0 fallback contracts; 280 checks.
+- Vehicles: five archetypes, mount/dismount, motion, horse gaits, weapon lock, HUD snapshot and seeded sites; 244 checks.
+- Cut-scenes: four ids, beats, skip, 12 s cap, reduce-motion card, bus signal and no-3D fallback; 78 checks.
+- Assets: manifest/sha256/size/license/payload-cap checks, particle-library fallback and CombatVFX integration; 2,110 checks.
 
 ## 6. Future backlog
 
@@ -96,7 +105,8 @@ Approved pillars:
 4. Freeform outpost grid placement with rotation/refund and power adjacency.
 5. Weapon mastery tracks, more weapon mods and attachment visuals.
 6. Co-op support (server-authoritative) as a separate architecture track.
-7. More POI kits, boss arenas and narrative codex entries.
+7. More boss arenas and narrative codex entries; aircraft-specific cockpit instruments and vehicle minimap icons.
 8. Performance profiling at 1440p/ultrawide and formal 1% low capture.
 9. More dungeon themes/floors and a dungeon map overlay.
 10. Deeper weather gameplay (lightning hazards, heat/cold exposure gear).
+11. Cut-scene replay gallery and localisation/voice-over pass for radio lines.

@@ -12,6 +12,8 @@ const TABS := [
 	{"id": &"dungeons", "label": "Dungeons", "icon": &"dungeon"},
 	{"id": &"rift_mods", "label": "Rift Mods", "icon": &"bolt"},
 	{"id": &"mutators", "label": "Mutators", "icon": &"warning"},
+	{"id": &"sites", "label": "Sites", "icon": &"outpost"},
+	{"id": &"rideables", "label": "Rideables", "icon": &"grid"},
 	{"id": &"guide", "label": "Field Guide", "icon": &"map"},
 ]
 
@@ -129,6 +131,10 @@ func _refresh() -> void:
 			_build_rift_mods()
 		&"mutators":
 			_build_mutators()
+		&"sites":
+			_build_sites()
+		&"rideables":
+			_build_rideables()
 		_:
 			_build_guide()
 
@@ -1051,3 +1057,87 @@ func _layout() -> void:
 		_nav_rail.custom_minimum_size.x = UIPalette.rail_width(viewport_width())
 	if _grid != null and is_instance_valid(_grid):
 		_grid.columns = _grid_columns()
+
+
+# ---------------------------------------------------------------------------
+# Sites & rideables (0.3.0 content; ContentDB overlays live POISpecs/vehicle specs)
+# ---------------------------------------------------------------------------
+
+func _build_sites() -> void:
+	var entries: Array = ContentDB.get_poi_codex_entries()
+	var header := UIFactory.section_header("Points of Interest", "%d SITES" % entries.size(), null, &"outpost")
+	header.tooltip_text = "Every authored POI kit: loot tier, hazard, garrison, radius, vehicle anchor and which cache table it rolls."
+	_content_host.add_child(header)
+	var grid := _make_grid()
+	_content_host.add_child(grid)
+	for entry in entries:
+		grid.add_child(_site_card(entry))
+
+
+func _site_card(entry: Dictionary) -> PanelContainer:
+	var accent: Color = entry.get("color", UIPalette.mint)
+	var card := UIFactory.panel("Card")
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.tooltip_text = String(entry.get("blurb", ""))
+	var box := UIFactory.vbox(UIPalette.SP2)
+	var head := UIFactory.hbox(UIPalette.SP2)
+	head.add_child(UIFactory.medallion(StringName(entry.get("icon", &"outpost")), 42, accent))
+	var title_box := UIFactory.vbox(1)
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_child(UIFactory.display_text(String(entry.get("display_name", "Site")), 18, 650, UIPalette.ivory))
+	var tags := UIFactory.hbox(6)
+	tags.add_child(UIFactory.badge("%s LOOT" % String(entry.get("loot_tier_label", "Common")).to_upper(), accent, &"cache"))
+	if bool(entry.get("interior", false)):
+		tags.add_child(UIFactory.badge("INTERIOR", UIPalette.mint, &"home"))
+	title_box.add_child(tags)
+	head.add_child(title_box)
+	box.add_child(head)
+	box.add_child(UIFactory.label(String(entry.get("blurb", "")), "BodySmall", UIPalette.muted))
+	var hazard_id := StringName(entry.get("hazard", &"none"))
+	var stats := UIFactory.hbox(UIPalette.SP3)
+	stats.add_child(_stat_icon(&"warning", _hazard_label(hazard_id), _hazard_color(hazard_id), "Hazard"))
+	stats.add_child(_stat_icon(&"users", "%d GARRISON" % int(entry.get("garrison", 0)), UIPalette.amber, "Authored garrison"))
+	stats.add_child(_stat_icon(&"layers", "%d m" % int(round(float(entry.get("radius", 0.0)))), UIPalette.muted, "POI radius"))
+	var vehicle_id := StringName(entry.get("vehicle", &""))
+	if vehicle_id != &"":
+		stats.add_child(_stat_icon(&"bolt", String(vehicle_id).to_upper(), UIPalette.blue, "Vehicle anchor"))
+	box.add_child(stats)
+	box.add_child(UIFactory.label("CACHE · %s" % String(entry.get("loot_table", "poi_common")).to_upper(), "Micro", UIPalette.muted_dim))
+	card.add_child(box)
+	return card
+
+
+func _build_rideables() -> void:
+	var entries: Array = ContentDB.get_rideable_codex_entries()
+	var header := UIFactory.section_header("Rideables", "%d VEHICLES" % entries.size(), null, &"grid")
+	header.tooltip_text = "Rideable archetypes: seats, top speed, hull health and the stash table their cargo rolls from."
+	_content_host.add_child(header)
+	var grid := _make_grid()
+	_content_host.add_child(grid)
+	for entry in entries:
+		grid.add_child(_rideable_card(entry))
+
+
+func _rideable_card(entry: Dictionary) -> PanelContainer:
+	var accent: Color = entry.get("color", UIPalette.mint)
+	var card := UIFactory.panel("Card")
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.tooltip_text = String(entry.get("blurb", ""))
+	var box := UIFactory.vbox(UIPalette.SP2)
+	var head := UIFactory.hbox(UIPalette.SP2)
+	head.add_child(UIFactory.medallion(StringName(entry.get("icon", &"grid")), 42, accent))
+	var title_box := UIFactory.vbox(1)
+	title_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_box.add_child(UIFactory.display_text(String(entry.get("display_name", "Rideable")), 18, 650, UIPalette.ivory))
+	title_box.add_child(UIFactory.label(String(entry.get("kind", "vehicle")).to_upper(), "Micro", accent))
+	head.add_child(title_box)
+	box.add_child(head)
+	box.add_child(UIFactory.label(String(entry.get("blurb", "")), "BodySmall", UIPalette.muted))
+	var stats := UIFactory.hbox(UIPalette.SP3)
+	stats.add_child(_stat_icon(&"users", "%d SEATS" % int(entry.get("seats", 1)), UIPalette.mint, "Seats"))
+	stats.add_child(_stat_icon(&"bolt", "%d KM/H" % int(round(float(entry.get("max_speed", 0.0)) * 3.6)), UIPalette.amber, "Top speed"))
+	stats.add_child(_stat_icon(&"shield", "%d HP" % int(entry.get("health", 0)), UIPalette.ivory, "Hull health"))
+	box.add_child(stats)
+	box.add_child(UIFactory.label("STASH · %s" % String(entry.get("stash_table", "vehicle_stash")).to_upper(), "Micro", UIPalette.muted_dim))
+	card.add_child(box)
+	return card

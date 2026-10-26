@@ -36,6 +36,9 @@ map. What you bring home rebuilds Waystation Kestrel. What you leave behind stay
 - **Under the Reach.** Find themed dungeons, descend into procedural interiors, break the guardian
   and carry the loot back to the surface.
 - **Water and lava.** Wade, swim and burn: basins, shorelines and hazards are part of every map.
+- **Sound and motion.** 113 procedural sound effects, eight crossfaded music cues (plus silence), five
+  audio buses and a master limiter; a Warden steed, a hoverbike, a ground rig, a wing and a VTOL skiff
+  to ride; and four authored cut-scenes that carry you from the drop pod to the lift-off.
 - **First drop.** A five-stage Field Training run teaches movement, combat, abilities, looting and
   extraction before the Reach is allowed to kill you.
 
@@ -85,11 +88,15 @@ templates — see [packaging notes](docs/TECHNICAL.md#15-packaging).
 
 | | |
 |---|---|
-| **World** | 5 planets, 12 maps, seeded 1.8 km frontier, 18 weather states + day/night, enterable interiors, water and lava |
+| **World** | 5 planets, 12 maps, seeded 1.8 km frontier, 20 POI types / 24 base POIs (up to 28), 18 weather states + day/night, 15–17 enterable interiors, water and lava |
+| **Rideables** | 5 archetypes — ground rig, hoverbike, airplane, spaceship, horse — with shared raycast physics, HUD panel and seeded site placement |
+| **Cinematics** | 4 cut-scenes (deployment, insertion, exfil, boss) with skip, a 12 s cap and a reduce-motion card |
+| **Audio** | 113 procedural SFX, 8 music cues + silent with 1.6 s crossfade, Music/SFX/UI/Ambience/Vehicles buses, master limiter, CC0 Kenney overrides |
 | **Run modes** | 5 modes — Normal, Quick (2x clock), Blackout, Gauntlet, Onslaught — plus 13 contracts and 20 world events |
 | **Combat** | 16 weapons, 4 weapon slots, 24 abilities, 4 ultimates, 24 perks |
 | **Enemies** | 20 archetypes, 11 elites, 6 bosses across 3 factions |
 | **Dungeons** | 3 themed under-reach kits, 2–3 entrances per run, procedural rooms, guardians and loot |
+| **Sites and loot** | 10 salvage cargo items, 3 loot tables (`poi_common`, `poi_rare`, `vehicle_stash`), POI loot tiers, Sites and Rideables Codex tabs |
 | **Squad** | 4 Warden companions (2 active), 3 Driftling pets |
 | **Progression** | Levels 1–30, 4 disciplines, gear with rarities and affixes |
 | **Outpost** | 8 modules × 3 tiers on a persistent 8×8 diorama layout (layout v2), between runs |
@@ -110,37 +117,44 @@ Full inventory: [docs/FEATURES.md](docs/FEATURES.md).
 | Melee | `V` | Grenade | `G` |
 | Inventory | `I` | Map | `M` |
 | Call extraction | `E` / `H` | Pause | `Esc` |
+| Summon steed (horse whistle) | `T` | Mount / dismount rideable | `E` |
+| Vehicle throttle / steer | `W` `S` / `A` `D` | Vehicle boost | `Shift` |
+| Vehicle brake / descend | `Ctrl` / `C` | Vehicle jump / ascend | `Space` |
+| Vehicle horn | `LMB` | — | — |
 
-Gamepad is supported and every action is rebindable in **Settings → Controls**. Full table:
+Gamepad is supported and every action is rebindable in **Settings → Controls**. Vehicle controls reuse the
+on-foot verbs while you are seated (sprint = boost, crouch = brake/descend, jump = jump/ascend,
+fire = horn); the **T** whistle only calls the Warden steed. Full table:
 [docs/FEATURES.md#controls](docs/FEATURES.md#controls).
 
 ## Development
 
 ```powershell
-tests\run_all.ps1     # all 14 headless suites
+tests\run_all.ps1     # all 18 headless suites
 ```
 
 The same suites run on Linux in CI (`.github/workflows/tests.yml`) on every push and pull request —
 that is what the **headless-tests** badge reports. The suite list lives in `tests/suites.json`, so the local
-runner and CI stay in sync.
+runner and CI stay in sync. Logs are written to `tests/artifacts/logs/`.
 
 ```
 autoload/    App, ContentDB, ProfileState, RunState, EventBus, AudioDirector
-features/    content, player, weapons, abilities, combat, world, dungeon, tutorial, ai, companions, run, loot
-ui/          theme, factory, reusable art components, HUD, 13 screens
-assets/      fonts (OFL), SVG icons, world shaders
-tools/       launcher, export, packaging, store and promo art
-tests/       14 headless suites and artifacts
-docs/        design, technical, QA, publishing
+features/    audio, content, player, weapons, abilities, combat, world, dungeon, tutorial, ai, companions, run, loot, vehicles, cutscene, fx
+ui/          theme, factory, reusable art components, HUD (including the vehicle panel), 13 screens
+assets/      fonts (OFL), SVG icons, world shaders, CC0 Kenney audio/particle/prototype packs
+tools/       launcher, export, packaging, store/promo art, CC0 asset fetcher
+tests/       18 headless suites and artifacts
+docs/        design, technical, QA, publishing, asset provenance
 ```
 
 More: [design](docs/DESIGN.md) · [architecture](docs/TECHNICAL.md) · [QA report](docs/QA_REPORT.md) ·
-[build plan and status](docs/BUILD_PLAN.md) · [changelog](CHANGELOG.md) · [dev log](docs/DEVLOG.md) ·
-[world API](features/world/WORLD_API.md) · [contributing](CONTRIBUTING.md)
+[CC0 asset provenance](docs/ASSET_PACKS.md) · [build plan and status](docs/BUILD_PLAN.md) ·
+[changelog](CHANGELOG.md) · [dev log](docs/DEVLOG.md) · [world API](features/world/WORLD_API.md) ·
+[contributing](CONTRIBUTING.md)
 
 ## Status
 
-**v0.2.0** (2026-10-25) — in development, single-player and offline.
+**v0.3.0** (2026-10-26) — in development, single-player and offline.
 
 - No co-op, PvP or online play.
 - No mid-run save — quitting during a deployment abandons that run.
@@ -153,15 +167,23 @@ What is done and what is planned: [docs/BUILD_PLAN.md](docs/BUILD_PLAN.md).
 ## License
 
 RIFTWARD is free software under the **GNU General Public License v3.0** (or later). See
-[LICENSE](LICENSE). Third-party components — Godot Engine (MIT) and the Sora, Inter and JetBrains Mono
-typefaces (SIL OFL 1.1) — are listed in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
+[LICENSE](LICENSE). Third-party components — Godot Engine (MIT), the Sora, Inter and JetBrains Mono
+typefaces (SIL OFL 1.1), and seven CC0 1.0 Kenney asset packs (particle/prototype textures, interface/UI/
+sci-fi/impact audio and music jingles) — are listed with their provenance in
+[docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) and [docs/ASSET_PACKS.md](docs/ASSET_PACKS.md).
 
 If you redistribute a build, GPL-3.0 requires the corresponding source; link back to this repository.
 
 ## Credits
 
-All geometry, materials, effects and audio are generated procedurally — no external models, textures or
-paid assets. Screenshots and promo art are composed from live in-engine captures.
+All 3D geometry, materials and shaders are generated procedurally in-engine, and the 113 SFX ids and
+music cues are synthesised from hand-authored recipes. No external 3D models or paid assets are used.
+The audio and texture layer does include art: **seven CC0 (public-domain) Kenney packs** supply particle
+and prototype textures, interface/UI/sci-fi/impact sounds and music jingles, curated under
+`assets/cc0/` with per-pack `LICENSE.txt` + `MANIFEST.json`. CC0 requires no attribution; Kenney is
+credited anyway. Fonts are SIL OFL 1.1. Screenshots and promo art are composed from live in-engine
+captures. Full provenance: [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) ·
+[docs/ASSET_PACKS.md](docs/ASSET_PACKS.md).
 
 ## Built with
 

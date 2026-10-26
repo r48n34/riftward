@@ -8,8 +8,24 @@ extends Node
 ## timing and content statistics so regressions are visible in CI logs.
 
 const WorldBuilderScript := preload("res://features/world/world_builder.gd")
+const POISpecsScript := preload("res://features/world/poi_specs.gd")
 const TEST_SEED := 12345
 const TIMEOUT_SECONDS := 180.0
+## 13 authored types + 3 exfil pads + the 7 second-wave kits = 20.
+const REQUIRED_TYPES: Array[StringName] = [
+	&"faction_camp", &"relay_spire", &"crash_site", &"vault", &"warden_outpost",
+	&"anomaly", &"ruin_field", &"ashen_stockade", &"bloom_hive", &"choir_post",
+	&"colony_ruins", &"derelict_ship", &"exfil_pad", &"foundry_hall",
+	&"hab_cluster", &"comms_array", &"fuel_depot", &"clinic_shelter",
+	&"research_lab", &"water_works",
+]
+## Second-wave kits must each author a real detail pass (>= 60 primitives).
+const SECOND_WAVE_TYPES: Array[StringName] = [
+	&"foundry_hall", &"hab_cluster", &"comms_array", &"fuel_depot",
+	&"clinic_shelter", &"research_lab", &"water_works",
+]
+const MIN_KIT_PRIMITIVES := 60
+const MIN_CLUTTER_INSTANCES := 400
 
 var _world = null
 var _done := false
@@ -108,8 +124,8 @@ func _validate() -> Array[String]:
 
 	# --- POIs -----------------------------------------------------------------
 	var pois: Array = _world.get_pois()
-	if pois.size() < 17:
-		errors.append("get_pois() returned %d entries, expected >= 17" % pois.size())
+	if pois.size() < 24:
+		errors.append("get_pois() returned %d entries, expected >= 24 (21 layout + 3 exfil)" % pois.size())
 	var type_counts: Dictionary = {}
 	var biomes: Dictionary = {}
 	var interior_count := 0
@@ -131,19 +147,70 @@ func _validate() -> Array[String]:
 		biomes[_world.get_biome_at(Vector2(pos.x, pos.z))] = true
 		if not (poi.get("interior", {}) as Dictionary).is_empty():
 			interior_count += 1
-	for required in [
-		"faction_camp", "relay_spire", "crash_site", "vault", "warden_outpost",
-		"anomaly", "ruin_field", "ashen_stockade", "bloom_hive", "choir_post",
-		"colony_ruins", "derelict_ship", "exfil_pad",
-	]:
-		if not type_counts.has(required) or int(type_counts[required]) < 1:
-			errors.append("POI type '%s' missing from layout" % required)
+	for required in REQUIRED_TYPES:
+		if not type_counts.has(String(required)) or int(type_counts[String(required)]) < 1:
+			errors.append("POI type '%s' missing from layout" % String(required))
 	if biomes.size() < 2:
 		errors.append("POIs only landed in %d biome(s); expected at least 2" % biomes.size())
-	if interior_count < 4:
-		errors.append("only %d POIs expose enterable interiors; expected >= 4" % interior_count)
+	if interior_count < 8:
+		errors.append("only %d POIs expose enterable interiors; expected >= 8" % interior_count)
 	if _world.get_biome_names().size() != 3:
 		errors.append("get_biome_names() did not return 3 planet biome names")
+
+	# --- POI specs: thread-safe catalogue covers every authored type --------
+	var spec_errors: Array[String] = POISpecsScript.validate()
+	for spec_error in spec_errors:
+		errors.append("POISpecs: %s" % spec_error)
+	if POISpecsScript.TYPE_IDS.size() != 20:
+		errors.append("POISpecs.TYPE_IDS has %d entries, expected 20" % POISpecsScript.TYPE_IDS.size())
+	if (POISpecsScript.all() as Array).size() != 20:
+		errors.append("POISpecs.all() returned %d specs, expected 20" % (POISpecsScript.all() as Array).size())
+	for required in REQUIRED_TYPES:
+		if not POISpecsScript.has_spec(required):
+			errors.append("POISpecs is missing a spec for '%s'" % String(required))
+	for entry in WorldBuilderScript.POI_LAYOUT:
+		var layout_type := StringName(String(entry["type"]))
+		if not POISpecsScript.has_spec(layout_type):
+			errors.append("POI_LAYOUT type '%s' has no POISpec" % String(layout_type))
+			continue
+		var spec: Dictionary = POISpecsScript.get_spec(layout_type)
+		if absf(float(spec.get("radius", 0.0)) - float(entry["radius"])) > 0.01:
+			errors.append("POISpecs radius for '%s' does not match POI_LAYOUT" % String(layout_type))
+		if absf(float(spec.get("pad", 0.0)) - float(entry["pad"])) > 0.01:
+			errors.append("POISpecs pad for '%s' does not match POI_LAYOUT" % String(layout_type))
+	for entry in WorldBuilderScript.EXTRA_POI_KINDS:
+		var extra_type := StringName(String(entry["type"]))
+		if not POISpecsScript.has_spec(extra_type):
+			errors.append("EXTRA_POI_KINDS type '%s' has no POISpec" % String(extra_type))
+	# Vehicle metadata must only use the five supported vehicle ids.
+	for spec in POISpecsScript.all():
+		var vehicle := StringName(String((spec as Dictionary).get("vehicle", &"")))
+		if not POISpecsScript.VEHICLES.has(vehicle):
+			errors.append("POISpecs vehicle '%s' is not supported" % String(vehicle))
+
+	# --- New-kit authored content budget ------------------------------------
+	var kit_primitives: Dictionary = {}
+	var kit_collision: Dictionary = {}
+	var structures_root_early: Node3D = _world.get_structures_root()
+	if structures_root_early != null:
+		for child in structures_root_early.get_children():
+			if not (child is Node3D):
+				continue
+			var info: Dictionary = child.get_meta("world_info", {})
+			var kit_type := String(info.get("type", ""))
+			if kit_type.is_empty():
+				continue
+			kit_primitives[kit_type] = maxi(int(kit_primitives.get(kit_type, 0)), int(child.get_meta("primitive_count", 0)))
+			kit_collision[kit_type] = maxi(int(kit_collision.get(kit_type, 0)), int(child.get_meta("collision_triangle_count", 0)))
+		var second_wave_report: PackedStringArray = []
+		for kit_type in SECOND_WAVE_TYPES:
+			var prims := int(kit_primitives.get(String(kit_type), 0))
+			if prims < MIN_KIT_PRIMITIVES:
+				errors.append("new kit '%s' authored only %d primitives (expected >= %d)" % [String(kit_type), prims, MIN_KIT_PRIMITIVES])
+			second_wave_report.append("%s=%d" % [String(kit_type), prims])
+		print("[world-test] second-wave kit primitives: %s" % " ".join(second_wave_report))
+	else:
+		errors.append("structures root missing before primitive audit")
 
 	# --- fluid basins ---------------------------------------------------------
 	var basins: Array = _world.get_fluid_basins()
@@ -237,15 +304,46 @@ func _validate() -> Array[String]:
 	else:
 		var multimesh_instances := 0
 		var prop_instances := 0
+		var clutter_batches := 0
+		var clutter_instances := 0
 		for child in scatter_root.get_children():
 			if child is MultiMeshInstance3D and child.multimesh != null:
 				multimesh_instances += 1
 				prop_instances += child.multimesh.instance_count
+				if String(child.name).begins_with("POIClutter"):
+					clutter_batches += 1
+					clutter_instances += child.multimesh.instance_count
 		if multimesh_instances < 4:
 			errors.append("only %d MultiMesh scatter batches; expected >= 4" % multimesh_instances)
 		if prop_instances < 1000:
 			errors.append("only %d scattered props; expected >= 1000" % prop_instances)
+		var scatter_stats: Dictionary = _world.get_generation_stats()
+		var clutter_stat := int((scatter_stats.get("scatter", {}) as Dictionary).get("clutter_instances", 0))
+		if clutter_batches < 1:
+			errors.append("no POI-local clutter MultiMesh batches found")
+		if clutter_instances < MIN_CLUTTER_INSTANCES or clutter_stat < MIN_CLUTTER_INSTANCES:
+			errors.append("POI clutter instances %d (stat %d), expected >= %d" % [clutter_instances, clutter_stat, MIN_CLUTTER_INSTANCES])
 		print("[world-test] scatter batches: %d, instances: %d" % [multimesh_instances, prop_instances])
+		print("[world-test] POI clutter batches: %d, instances: %d" % [clutter_batches, clutter_instances])
+		# LootCache contract: world exposes usable clutter loot-prop anchors.
+		var loot_props: Array = _world.get_loot_props()
+		if loot_props.size() < 20:
+			errors.append("get_loot_props() returned %d anchors, expected >= 20" % loot_props.size())
+		for prop in loot_props:
+			if not (prop is Dictionary):
+				errors.append("loot prop entry is not a Dictionary")
+				break
+			var prop_dict: Dictionary = prop
+			if not (prop_dict.get("position", null) is Vector3):
+				errors.append("loot prop is missing a Vector3 position")
+				break
+			if String(prop_dict.get("kind", "")).is_empty():
+				errors.append("loot prop is missing a kind")
+				break
+			if not POISpecsScript.has_spec(StringName(prop_dict.get("poi_type", &""))):
+				errors.append("loot prop poi_type '%s' has no spec" % String(prop_dict.get("poi_type", &"")))
+				break
+		print("[world-test] loot-prop anchors: %d" % loot_props.size())
 
 	# --- physical ground check ------------------------------------------------
 	var space := get_viewport().world_3d.direct_space_state
@@ -260,11 +358,63 @@ func _validate() -> Array[String]:
 			if absf(hit_y - sp.y) > 3.0:
 				errors.append("ground raycast y=%.1f far from spawn y=%.1f" % [hit_y, sp.y])
 
+	# --- POI spacing sanity ---------------------------------------------------
+	var min_spacing := INF
+	for i in pois.size():
+		var a: Vector3 = pois[i]["position"]
+		for j in range(i + 1, pois.size()):
+			var b: Vector3 = pois[j]["position"]
+			min_spacing = minf(min_spacing, a.distance_to(b))
+	print("[world-test] POIs: %d, min centre spacing: %.1f m, enterable interiors: %d" % [pois.size(), min_spacing, interior_count])
+
+	# --- determinism ----------------------------------------------------------
+	await _check_determinism(errors)
+
 	# --- report ---------------------------------------------------------------
 	var stats: Dictionary = _world.get_generation_stats()
 	print("[world-test] generation stats: %s" % JSON.stringify(stats))
 	print("[world-test] node count: %d" % _world.find_children("*", "", true, false).size())
 	print("[world-test] validation took %d ms" % (Time.get_ticks_msec() - t))
 	return errors
+
+
+## Replays the same seed on a navigation-less world and asserts identical POI
+## layout (positions/order), proving generation is deterministic per seed.
+func _check_determinism(errors: Array[String]) -> void:
+	var replay = WorldBuilderScript.new()
+	replay.name = "WorldDeterminism"
+	replay.bake_navigation = false
+	replay.create_environment = false
+	add_child(replay)
+	if ContentDB != null:
+		var preset: Dictionary = ContentDB.get_map_preset(&"verdant_verge")
+		if not preset.is_empty():
+			replay.apply_preset(preset)
+	var started := Time.get_ticks_msec()
+	await replay.generate(TEST_SEED)
+	var replay_ms := Time.get_ticks_msec() - started
+	if not bool(replay.is_generated()):
+		errors.append("determinism replay failed to generate")
+	else:
+		var first: Array = _world.get_pois()
+		var second: Array = replay.get_pois()
+		if first.is_empty() or second.is_empty():
+			errors.append("determinism replay produced no POIs")
+		elif (first[0]["position"] as Vector3) != (second[0]["position"] as Vector3):
+			errors.append("determinism: first POI position differs between identical seeds (%s vs %s)" % [str(first[0]["position"]), str(second[0]["position"])])
+		else:
+			var identical := first.size() == second.size()
+			if identical:
+				for i in first.size():
+					var a: Dictionary = first[i]
+					var b: Dictionary = second[i]
+					if String(a["type"]) != String(b["type"]) or (a["position"] as Vector3) != (b["position"] as Vector3):
+						identical = false
+						break
+			if not identical:
+				errors.append("determinism: POI layout differs between identical seeds")
+			print("[world-test] determinism replay: %d POIs, first at %s, %d ms (no nav/env)" % [second.size(), str(first[0]["position"]), replay_ms])
+	replay.queue_free()
+	await get_tree().process_frame
 
 

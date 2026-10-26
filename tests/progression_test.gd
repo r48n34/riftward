@@ -64,6 +64,144 @@ func _run() -> void:
 	_check(content_db.perks.size() == 24, "24 perks authored")
 	_check(content_db.contracts.size() == 13, "13 contracts authored")
 	_check(content_db.content_errors.is_empty(), "ContentDB reports no validation errors")
+
+	# --- 0.3.0 content: loot cargo, tables and Codex records -------------------
+	_check(content_db.items.size() == 10, "10 authored loot items")
+	_check(content_db.loot_tables.size() == 3, "3 authored loot tables")
+	_check(content_db.poi_codex.size() == 7, "7 POI codex records authored")
+	_check(content_db.rideable_codex.size() == 5, "5 rideable codex records authored")
+	var authored_rarities := {
+		&"field_ration": 0, &"stim_injector": 1, &"ammo_crate": 1, &"repair_kit": 2,
+		&"fuel_cell": 2, &"alloy_plate": 1, &"relic_shard": 3, &"map_intel": 2,
+		&"beacon_flare": 0, &"trophy_core": 4,
+	}
+	for loot_id in authored_rarities.keys():
+		var loot = content_db.get_item(loot_id)
+		_check(loot != null, "loot item exists: %s" % loot_id)
+		if loot == null:
+			continue
+		_check(loot.rarity == int(authored_rarities[loot_id]), "loot item rarity tier: %s" % loot_id)
+		_check(loot.value > 0 and loot.get_stack_value(1) >= loot.value,
+			"loot item value follows the rarity curve: %s" % loot_id)
+		_check(not loot.display_name.strip_edges().is_empty(), "loot item has a display name: %s" % loot_id)
+		_check(not loot.description.strip_edges().is_empty(), "loot item has a tooltip blurb: %s" % loot_id)
+		_check(UIIcons.has_icon(loot.icon), "loot item icon resolves: %s" % loot_id)
+	var loot_factory_script: Script = load("res://features/loot/item_factory.gd")
+	var loot_tables_script: Script = load("res://features/loot/loot_tables.gd")
+	_check(loot_factory_script != null, "loot factory script available")
+	_check(loot_tables_script != null, "loot tables script available")
+	for loot_table_id in [&"poi_common", &"poi_rare", &"vehicle_stash"]:
+		var table: Dictionary = content_db.get_loot_table(loot_table_id)
+		_check(not table.is_empty(), "loot table exists: %s" % loot_table_id)
+		_check((table.get("entries", []) as Array).size() >= 3, "loot table is weighted: %s" % loot_table_id)
+		_check(int(table.get("rarity_floor", -1)) in [0, 1, 2, 3, 4],
+			"loot table declares a valid rarity floor: %s" % loot_table_id)
+	var all_table_loot: Dictionary = {}
+	for loot_table_id in content_db.get_loot_table_ids():
+		for loot_id in content_db.get_loot_table_item_ids(loot_table_id):
+			all_table_loot[loot_id] = true
+	for loot_id in authored_rarities.keys():
+		_check(all_table_loot.has(loot_id), "loot item is reachable from a loot table: %s" % loot_id)
+	_check(loot_tables_script.call("table_for_loot_tier", 1) == &"poi_common",
+		"numeric loot tier 1 maps to poi_common")
+	_check(loot_tables_script.call("table_for_loot_tier", 3) == &"poi_rare",
+		"numeric loot tier 3 maps to poi_rare")
+	_check(loot_tables_script.call("table_for_loot_tier", &"vehicle") == &"vehicle_stash",
+		"vehicle loot tier maps to vehicle_stash")
+	_check(content_db.get_loot_table_for_poi(&"no_such_poi_type") == &"poi_common",
+		"unknown POI loot tier falls back to poi_common")
+	_check(content_db.get_loot_table_ids().has(content_db.get_loot_table_for_poi(&"comms_array")),
+		"known POI resolves a real loot table")
+
+	# Deterministic rolls: every result must describe to a named, valuable item and
+	# the authored cargo must all be reachable through the weighted distribution.
+	var roll_rng := RandomNumberGenerator.new()
+	roll_rng.seed = 20261026
+	var roll_failures := 0
+	var rolled_ids: Dictionary = {}
+	for loot_table_id in [&"poi_common", &"poi_rare", &"vehicle_stash"]:
+		for roll_index in 400:
+			var roll: Dictionary = content_db.roll_loot_table(roll_rng, loot_table_id, 0.05, 2, 5000 + roll_index)
+			if roll.is_empty():
+				roll_failures += 1
+				continue
+			var roll_info: Dictionary = loot_factory_script.call("describe", roll)
+			if String(roll_info.get("display_name", "")).is_empty() or int(roll_info.get("value", 0)) <= 0:
+				roll_failures += 1
+			rolled_ids[StringName(roll.get("base_id", &""))] = true
+	_check(roll_failures == 0, "every rolled loot table entry describes with a value")
+	for loot_id in authored_rarities.keys():
+		_check(rolled_ids.has(loot_id), "weighted distribution reaches loot item: %s" % loot_id)
+	var det_a := RandomNumberGenerator.new()
+	det_a.seed = 99
+	var det_b := RandomNumberGenerator.new()
+	det_b.seed = 99
+	_check(
+		content_db.roll_loot_table(det_a, &"poi_rare", 0.1, 3, 77)
+			== content_db.roll_loot_table(det_b, &"poi_rare", 0.1, 3, 77),
+		"loot table rolls are deterministic per seed"
+	)
+	var facade_rng := RandomNumberGenerator.new()
+	facade_rng.seed = 31
+	var facade_item: Dictionary = loot_factory_script.call(
+		"generate_from_loot_table", facade_rng, &"poi_common", 0.0, 1, 777
+	)
+	_check(not facade_item.is_empty(), "ItemFactory.generate_from_loot_table facade rolls an item")
+
+	# Loot cargo uses the normal item dictionary (save v5 untouched) but is never
+	# equipment, and the cache payload contract LootCache consumes stays intact.
+	var probe_loot_item: Dictionary = loot_factory_script.call("generate_loot_item", &"trophy_core", 4242, 2)
+	var probe_info: Dictionary = loot_factory_script.call("describe", probe_loot_item)
+	_check(String(probe_info.get("kind", "")) == "loot", "loot cargo describes with kind 'loot'")
+	_check(String(probe_info.get("rarity_name", "")) == "Prototype", "trophy core describes at Prototype rarity")
+	_check(int(probe_info.get("amount", 0)) == 2, "loot cargo keeps its stack amount")
+	_check(int(probe_info.get("value", 0)) == int(round(120.0 * float(StatKeys.RARITY_MULT[4]))) * 2,
+		"loot stack value follows the authored value + rarity curve")
+	_check((loot_factory_script.call("equipment_modifiers", probe_loot_item) as Array).is_empty(),
+		"loot cargo is not equipment")
+	_check((loot_factory_script.call("weapon_runtime_stats", probe_loot_item) as Dictionary).is_empty(),
+		"loot cargo is not a weapon")
+	var cache_rng := RandomNumberGenerator.new()
+	cache_rng.seed = 1234
+	var cache_payload: Dictionary = content_db.build_loot_cache_payload(cache_rng, &"vehicle_stash", 2, 0.05, 900)
+	for payload_key in ["salvage", "cores", "item", "rarity", "label", "item_label", "prompt", "threat", "boss"]:
+		_check(cache_payload.has(payload_key), "cache payload carries '%s'" % payload_key)
+	_check(not (cache_payload.get("item", {}) as Dictionary).is_empty(), "cache payload carries an item")
+	_check(String(cache_payload.get("loot_table", "")) == "vehicle_stash", "cache payload records its table id")
+	var locker_backup: Dictionary = profile.data.duplicate(true)
+	profile.data["inventory"] = []
+	profile.data["next_uid"] = 1
+	var banked_uid: int = profile.add_item(probe_loot_item)
+	_check(banked_uid > 0 and profile.get_inventory_size() == 1, "loot cargo banks into the locker")
+	_check(not profile.equip_item(banked_uid, &"charm"), "loot cargo cannot be equipped")
+	profile.data = locker_backup
+
+	# Codex presentation records (fallbacks for the world/vehicle streams).
+	for poi_id in [&"foundry_hall", &"hab_cluster", &"comms_array", &"fuel_depot",
+			&"clinic_shelter", &"research_lab", &"water_works"]:
+		var poi_entry: Dictionary = content_db.get_poi_codex(poi_id)
+		_check(not poi_entry.is_empty(), "POI codex record exists: %s" % poi_id)
+		_check(not String(poi_entry.get("display_name", "")).is_empty(), "POI codex record is named: %s" % poi_id)
+		_check(not String(poi_entry.get("blurb", "")).is_empty(), "POI codex record has a blurb: %s" % poi_id)
+		_check(UIIcons.has_icon(StringName(poi_entry.get("icon", &""))),
+			"POI codex icon resolves: %s" % poi_id)
+		_check(content_db.get_loot_table_ids().has(StringName(poi_entry.get("loot_table", &""))),
+			"POI codex loot table resolves: %s" % poi_id)
+	for ride_id in [&"rig", &"hoverbike", &"spaceship", &"airplane", &"horse"]:
+		var ride_entry: Dictionary = content_db.get_rideable_codex(ride_id)
+		_check(not ride_entry.is_empty(), "rideable codex record exists: %s" % ride_id)
+		_check(not String(ride_entry.get("display_name", "")).is_empty(),
+			"rideable codex record is named: %s" % ride_id)
+		_check(not String(ride_entry.get("blurb", "")).is_empty(),
+			"rideable codex record has a blurb: %s" % ride_id)
+		_check(UIIcons.has_icon(StringName(ride_entry.get("icon", &""))),
+			"rideable codex icon resolves: %s" % ride_id)
+		_check(not String(ride_entry.get("kind", "")).is_empty(), "rideable codex kind authored: %s" % ride_id)
+		_check(String(ride_entry.get("stash_table", "")) == "vehicle_stash",
+			"rideable codex stash table authored: %s" % ride_id)
+	_check(content_db.get_poi_codex_entries().size() == 7, "POI codex enumerates all 7 records")
+	_check(content_db.get_rideable_codex_entries().size() == 5, "rideable codex enumerates all 5 records")
+
 	for planet_id in [&"meridian_9", &"cinder_4", &"thalassa_2", &"frost_9", &"nyx_12"]:
 		var planet: Dictionary = content_db.get_planet(planet_id)
 		_check(not planet.is_empty(), "planet exists: %s" % planet_id)

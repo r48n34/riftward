@@ -1,0 +1,129 @@
+{
+    "schema":  1,
+    "pack_id":  "kenney_music_jingles",
+    "title":  "Kenney Music Jingles",
+    "author":  "Kenney (kenney.nl)",
+    "uploader":  "Lopano",
+    "asset_library":  {
+                          "id":  1839,
+                          "version":  "1.0.2",
+                          "api_url":  "https://godotengine.org/asset-library/api/asset/1839",
+                          "page_url":  "https://godotengine.org/asset-library/asset/1839",
+                          "listed_license":  "CC0",
+                          "listed_download_status":  "dead",
+                          "listed_download_url":  "https://github.com/Loppansson/kenney-music-jingles-for-godot/archive/1312c1a8ab2b5830136a5f53ea8c570389bd0808.zip",
+                          "fetched_download_url":  "https://kenney.nl/media/pages/assets/music-jingles/f37e530b9e-1677590399/kenney_music-jingles.zip"
+                      },
+    "source_kind":  "kenney.nl",
+    "source_url":  "https://kenney.nl/media/pages/assets/music-jingles/f37e530b9e-1677590399/kenney_music-jingles.zip",
+    "commit":  null,
+    "archive_sha256":  "b729ba57959bd58793d2c5cafa348aaf2655d354f3da35ec4729e03ec77197b8",
+    "archive_bytes":  1239525,
+    "license":  "CC0-1.0",
+    "license_file":  "res://assets/cc0/kenney_music_jingles/LICENSE.txt",
+    "license_copies":  [
+                           "res://assets/music/kenney/LICENSE.txt"
+                       ],
+    "curated_root":  "res://assets/music/kenney",
+    "file_count":  16,
+    "total_bytes":  277678,
+    "generated_by":  "tools/fetch_asset_packs.ps1",
+    "files":  [
+                  {
+                      "path":  "res://assets/music/kenney/jingles_HIT00.ogg",
+                      "bytes":  8650,
+                      "sha256":  "e23d8c9e971a4e34484bc834a3ec1d560811ec6f5edd5efa2c61e583c18c504a",
+                      "source":  "Audio/Hit jingles/jingles_HIT00.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_HIT07.ogg",
+                      "bytes":  8707,
+                      "sha256":  "b35d7bea586f6412be312753a50b708e9505ce86c42e5549117c18f8da00a4e6",
+                      "source":  "Audio/Hit jingles/jingles_HIT07.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_HIT15.ogg",
+                      "bytes":  19626,
+                      "sha256":  "e2929ad1acb0ff929f2367eb06d4a57d3c543be9f5a8b6a7fad7e44e440474e1",
+                      "source":  "Audio/Hit jingles/jingles_HIT15.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_NES00.ogg",
+                      "bytes":  39948,
+                      "sha256":  "1010c9b566d6c090ff03a4aaaf7439e26eb4cc4f20373800d0b7e6a9057b795d",
+                      "source":  "Audio/8-Bit jingles/jingles_NES00.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_NES03.ogg",
+                      "bytes":  16573,
+                      "sha256":  "64b146c4b737d4a74d60316554bdb667cfbe20681a71722948c5f70f83af7d92",
+                      "source":  "Audio/8-Bit jingles/jingles_NES03.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_NES05.ogg",
+                      "bytes":  21439,
+                      "sha256":  "f488e856ca7e01df286c7e3edc853bfa7bfde91e1d39754f611bda2e844ef37d",
+                      "source":  "Audio/8-Bit jingles/jingles_NES05.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_NES07.ogg",
+                      "bytes":  18971,
+                      "sha256":  "eac9e04c7ccdf10c9e0350e53a99f6bfb925eda725a6273b2972329170ab56a0",
+                      "source":  "Audio/8-Bit jingles/jingles_NES07.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_PIZZI00.ogg",
+                      "bytes":  10382,
+                      "sha256":  "b442ade3308a2bbda4b8c572c86f9f1071c7bdbcfb1e6f915d35c605b61bd475",
+                      "source":  "Audio/Pizzicato jingles/jingles_PIZZI00.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_PIZZI04.ogg",
+                      "bytes":  11052,
+                      "sha256":  "f98fa4af012d443da636a2d90f2926adc2384ec833851918f88426be9a25acf9",
+                      "source":  "Audio/Pizzicato jingles/jingles_PIZZI04.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_PIZZI12.ogg",
+                      "bytes":  15969,
+                      "sha256":  "f5fc4c01b106e6317acaee1bffb51704e41c85b0fa7529dff86b447bdabf150c",
+                      "source":  "Audio/Pizzicato jingles/jingles_PIZZI12.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_SAX00.ogg",
+                      "bytes":  10335,
+                      "sha256":  "f87605d2a3c717e6a26e584f57d24eac44e47f5a01470dad18809e5d6c9eb618",
+                      "source":  "Audio/Sax jingles/jingles_SAX00.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_SAX04.ogg",
+                      "bytes":  9786,
+                      "sha256":  "94eeaa26800f6a04eb71b9d9e4f25c19d779109f6903d17811d2a881d2f5614d",
+                      "source":  "Audio/Sax jingles/jingles_SAX04.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_SAX07.ogg",
+                      "bytes":  30900,
+                      "sha256":  "241c8570fbded819ee0205e4be3efa80aeb834a70df89318da88f9e219798b11",
+                      "source":  "Audio/Sax jingles/jingles_SAX07.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_STEEL00.ogg",
+                      "bytes":  15691,
+                      "sha256":  "8799eb726d784ae0aa1a9df80648a873ac60015bc00aea12c8e2dd1431a2bd7d",
+                      "source":  "Audio/Steel jingles/jingles_STEEL00.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_STEEL03.ogg",
+                      "bytes":  19117,
+                      "sha256":  "21233e95b5e2c167293484c9906264c632a5f1fe45744d1d5b52ba1dfb0a18fb",
+                      "source":  "Audio/Steel jingles/jingles_STEEL03.ogg"
+                  },
+                  {
+                      "path":  "res://assets/music/kenney/jingles_STEEL14.ogg",
+                      "bytes":  20532,
+                      "sha256":  "a24f6f6f76063d8e0442b15e660896ec4dd11a7be45d19f71088408e002c99f8",
+                      "source":  "Audio/Steel jingles/jingles_STEEL14.ogg"
+                  }
+              ]
+}

@@ -64,6 +64,40 @@ static func generate_gear(
 	}, rng)
 
 
+## Builds one authored loot-cargo stack (kind "loot"). Authoritative rarity comes
+## from the content entry, so the result is stable for a given table entry — no
+## affixes and no equipment slot. Loot items still travel in the ordinary item
+## dictionary, so save format v5 is untouched.
+static func generate_loot_item(item_id: StringName, uid: int = 0, amount: int = 1) -> Dictionary:
+	var loot := ContentDB.get_item(item_id)
+	if loot == null:
+		return {}
+	return {
+		"uid": uid,
+		"kind": "loot",
+		"base_id": String(item_id),
+		"slot": "",
+		"rarity": clampi(loot.rarity, 0, 4),
+		"level": 1,
+		"amount": maxi(1, amount),
+		"affixes": [],
+	}
+
+
+## Rolls one weighted entry from an authored loot table id (poi_common,
+## poi_rare, vehicle_stash). Thin facade so gameplay code never needs LootTables.
+static func generate_from_loot_table(
+	rng: RandomNumberGenerator,
+	table_id: StringName,
+	luck: float = 0.0,
+	level: int = 1,
+	uid: int = 0
+) -> Dictionary:
+	if ContentDB == null:
+		return {}
+	return ContentDB.roll_loot_table(rng, table_id, luck, level, uid)
+
+
 static func generate_random_for_slot(
 	rng: RandomNumberGenerator,
 	slot: StringName,
@@ -139,6 +173,10 @@ static func describe(item: Dictionary) -> Dictionary:
 		"amount": int(item.get("amount", 1)),
 	}
 	var multiplier := ContentDB.get_rarity_mult(rarity)
+	if kind == "loot":
+		var loot := ContentDB.get_item(base_id)
+		if loot != null:
+			return _describe_loot(info, loot, item)
 	if kind == "weapon":
 		var weapon := ContentDB.get_weapon(base_id)
 		if weapon == null:
@@ -190,6 +228,31 @@ static func describe(item: Dictionary) -> Dictionary:
 			else:
 				info.stats[stat] = float(info.stats.get(stat, 0.0)) + value
 		info.value += int((info.armor + _stat_total(info.stats)) * 2.0) * (rarity + 1)
+	return info
+
+
+## Fills a describe() payload for authored loot cargo (kind "loot"). Loot is never
+## equipped and carries no affixes; the authored rarity is authoritative and the
+## authored Common-tier value is scaled by the shared rarity curve and stack count.
+static func _describe_loot(info: Dictionary, loot: LootItemData, item: Dictionary) -> Dictionary:
+	var amount := maxi(1, int(item.get("amount", 1)))
+	var tier := clampi(loot.rarity, 0, 4)
+	info.kind = "loot"
+	info.display_name = loot.display_name
+	info.description = loot.description
+	info.set_id = ""
+	info.rarity = tier
+	info.rarity_name = ContentDB.get_rarity_name(tier)
+	info.rarity_color = ContentDB.get_rarity_color(tier)
+	info.amount = amount
+	info.icon = String(loot.icon)
+	info.category = String(loot.category)
+	info.tags = Array(loot.tags)
+	info.effects = loot.effects.duplicate(true)
+	info.stats = loot.effects.duplicate(true)
+	info.armor = 0.0
+	info.affixes = []
+	info.value = int(round(float(loot.value) * ContentDB.get_rarity_mult(tier))) * amount
 	return info
 
 

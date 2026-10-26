@@ -193,6 +193,8 @@ func _grant_payload() -> void:
 	if (salvage > 0 or cores > 0) and run_state.has_method("add_satchel_salvage"):
 		run_state.call("add_satchel_salvage", salvage, cores)
 	var item: Dictionary = payload.get("item", {})
+	if item.is_empty():
+		item = _roll_table_item()
 	if not item.is_empty() and run_state.has_method("add_loot_item"):
 		run_state.call("add_loot_item", item)
 
@@ -206,6 +208,26 @@ func _play_open_vfx() -> void:
 	var audio := get_node_or_null("/root/AudioDirector")
 	if audio != null and audio.has_method("play_3d"):
 		audio.call("play_3d", &"pickup", global_position, -5.0)
+
+
+## Rolls a table payload at open time so a payload only needs {"loot_table": "poi_rare"}
+## (or {"poi_type": "comms_array"}). Pre-rolled item payloads still win. loot_tables.gd
+## is loaded lazily: preloading it would pull ItemFactory -> ContentDB before autoloads
+## exist in --script test runs.
+func _roll_table_item() -> Dictionary:
+	var table_id := StringName(payload.get("loot_table", &""))
+	var tables_script := load("res://features/loot/loot_tables.gd") as Script
+	if tables_script == null:
+		return {}
+	if table_id == &"":
+		table_id = StringName(tables_script.call("table_for_poi_dict", payload))
+	if table_id == &"" or not bool(tables_script.call("has_table", table_id)):
+		return {}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(hash(cache_id)) ^ (maxi(1, int(payload.get("threat", 1))) * 7919)
+	var level := 1 + maxi(0, int(payload.get("threat", 1))) * 2
+	var rolled: Variant = tables_script.call("roll_item", rng, table_id, float(payload.get("luck", 0.0)), level, 0)
+	return rolled as Dictionary if rolled is Dictionary else {}
 
 
 func get_payload() -> Dictionary:

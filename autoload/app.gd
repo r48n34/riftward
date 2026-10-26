@@ -22,6 +22,9 @@ var inventory_open := false
 var _pause_open := false
 var _capture_deployment := false
 var _capture_menu := false
+## Cut-scene ownership. Non-empty while a cinematic owns the view; gameplay
+## input, pause and inventory are gated on it until the overlay reports back.
+var _cinematic_id: StringName = &""
 
 ## Single source of truth for gameplay defaults and the Settings reset button.
 ## Mouse buttons and joy axes are optional per action.
@@ -60,6 +63,7 @@ const ACTION_DEFAULTS: Array[Dictionary] = [
 	{"action": &"map", "keys": [KEY_M], "joy_buttons": [JOY_BUTTON_BACK]},
 	{"action": &"pause", "keys": [KEY_ESCAPE], "joy_buttons": [JOY_BUTTON_START]},
 	{"action": &"interact_hold", "keys": [KEY_E]},
+	{"action": &"summon_ride", "keys": [KEY_T]},
 ]
 
 const MOUSE_BUTTON_LABELS := {
@@ -145,8 +149,19 @@ func _boot_deferred() -> void:
 	booted.emit()
 
 
+## The input smokes drive a real deployment, so they must wait out the opening
+## insertion cut-scene: gameplay input is intentionally locked while it plays.
+func _wait_for_gameplay(max_wait: float = 14.0) -> bool:
+	var waited := 0.0
+	while is_cinematic() and waited < max_wait:
+		await get_tree().create_timer(0.1).timeout
+		waited += 0.1
+	return not is_cinematic()
+
+
 func _run_shoot_smoke(player: Node) -> void:
 	await get_tree().create_timer(1.2).timeout
+	await _wait_for_gameplay()
 	if player == null or not is_instance_valid(player) or not is_deployment_active():
 		print("[SHOOT-SMOKE] RESULT: FAIL - deployment not active")
 		get_tree().quit(1)
@@ -206,6 +221,7 @@ func _run_shoot_smoke(player: Node) -> void:
 
 func _run_inventory_smoke(player: Node) -> void:
 	await get_tree().create_timer(1.2).timeout
+	await _wait_for_gameplay()
 	if player == null or not is_instance_valid(player) or not is_deployment_active():
 		print("[INVENTORY-SMOKE] RESULT: FAIL - deployment not active")
 		get_tree().quit(1)
@@ -453,6 +469,7 @@ func skip_tutorial() -> void:
 
 
 func _free_deployment() -> void:
+	abort_cinematic()
 	_loading = false
 	if deployment != null and is_instance_valid(deployment):
 		deployment.queue_free()
@@ -486,7 +503,11 @@ func _on_deployment_ended(result: Dictionary) -> void:
 	current_screen = &"results"
 	_ui_call("show_results", [result])
 	AudioDirector.play_ui(&"ui_confirm")
-	AudioDirector.set_music_mood(&"hub")
+	# The results ledger gets its own cue rather than the hub bed.
+	if AudioDirector != null and AudioDirector.has_method("set_music_track"):
+		AudioDirector.call("set_music_track", &"results")
+	else:
+		AudioDirector.set_music_mood(&"hub")
 
 
 func _on_deployment_finished(result: Dictionary) -> void:
@@ -516,6 +537,8 @@ func is_deployment_active() -> bool:
 func set_pause(paused: bool) -> void:
 	if not is_deployment_active():
 		return
+	if is_cinematic():
+		return
 	if paused and inventory_open:
 		set_inventory(false)
 	_pause_open = paused
@@ -529,6 +552,82 @@ func toggle_pause() -> void:
 	set_pause(not get_tree().paused)
 
 
+# ---------------------------------------------------------------------------
+# Cinematics
+# ---------------------------------------------------------------------------
+## Hands the view to a cut-scene overlay. Returns false when no overlay is
+## available, another cinematic already owns the view, or the id is empty, so
+## callers can fall back to their normal flow instead of stalling the game.
+func play_cinematic(cutscene_id: StringName, opts: Dictionary = {}) -> bool:
+	if cutscene_id == &"" or _cinematic_id != &"":
+		return false
+	if is_deployment_active() and inventory_open:
+		set_inventory(false)
+	var started: Variant = _ui_call("show_cinematic", [cutscene_id, opts])
+	if started != true:
+		return false
+	_cinematic_id = cutscene_id
+	_ui_call("set_hud_cinematic", [true])
+	_lock_player_input(true)
+	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	if EventBus != null:
+		EventBus.cinematic_state_changed.emit(true, cutscene_id)
+	return true
+
+
+## Public entry point for UIRoot/the overlay. Kept separate so the private
+## handler can stay private to this service.
+func notify_cinematic_finished(cutscene_id: StringName) -> void:
+	_on_cinematic_finished(cutscene_id)
+
+
+## Called by UIRoot when the overlay finishes, is skipped or is aborted.
+func _on_cinematic_finished(cutscene_id: StringName) -> void:
+	if _cinematic_id == &"":
+		return
+	var finished_id: StringName = _cinematic_id
+	_cinematic_id = &""
+	_ui_call("hide_cinematic")
+	_ui_call("set_hud_cinematic", [false])
+	_lock_player_input(false)
+	if is_deployment_active() and _pause_open == false and inventory_open == false:
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	else:
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+	if EventBus != null:
+		EventBus.cinematic_state_changed.emit(false, finished_id if finished_id != &"" else cutscene_id)
+
+
+func is_cinematic() -> bool:
+	return _cinematic_id != &""
+
+
+func get_cinematic_id() -> StringName:
+	return _cinematic_id
+
+
+## Drops a running cinematic without waiting for its duration (deployment end,
+## death, scene change). Silent when nothing is playing.
+func abort_cinematic() -> void:
+	if _cinematic_id == &"":
+		return
+	_ui_call("hide_cinematic")
+	_ui_call("set_hud_cinematic", [false])
+	_lock_player_input(false)
+	var aborted: StringName = _cinematic_id
+	_cinematic_id = &""
+	if EventBus != null:
+		EventBus.cinematic_state_changed.emit(false, aborted)
+
+
+func _lock_player_input(locked: bool) -> void:
+	if deployment == null or not is_instance_valid(deployment):
+		return
+	var player = deployment.get("player")
+	if player != null and is_instance_valid(player) and player.has_method("set_input_locked"):
+		player.call("set_input_locked", locked)
+
+
 ## Full-screen inventory/satchel. Pauses gameplay and releases the mouse; the
 ## overlay is owned by UIRoot and the close path is shared with Esc.
 func set_inventory(open: bool) -> void:
@@ -539,6 +638,8 @@ func set_inventory(open: bool) -> void:
 		return
 	if open:
 		if _pause_open or inventory_open:
+			return
+		if is_cinematic():
 			return
 		var player = deployment.get("player") if deployment != null else null
 		if player != null and is_instance_valid(player):
@@ -1064,6 +1165,10 @@ func _apply_saved_bindings() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_deployment_active():
+		return
+	if is_cinematic():
+		# The overlay owns skip keys; gameplay must not act on them.
+		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("inventory"):
 		if inventory_open:

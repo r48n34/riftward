@@ -22,9 +22,11 @@ await world.generate(12345)            # async coroutine, deterministic per seed
 var spawn := world.get_spawn_points()[0]
 # spawn player at spawn (it is exactly on the flattened drop pad, y = ground)
 
-var pois: Array = world.get_pois()     # 16 x {position, type, name, radius} (+ preset extras)
+var pois: Array = world.get_pois()     # 24 x {position, type, name, radius, pad_radius} (+ preset extras)
 var roadside: Array = world.get_roadside_points()  # 10-14 outbuildings (more with a preset)
 var exfils: Array = world.get_exfil_points()  # 3 x {position, name}
+var loot_props: Array = world.get_loot_props()  # ~2 clutter anchors per POI for LootCache
+var clutter: int = world.get_clutter_piece_count()  # ~480 POI-local MultiMesh pieces at density 1.0
 var nav: NavigationRegion3D = world.get_nav_region()
 var map: Texture2D = world.get_map_texture()
 var ground_y := world.sample_height(Vector2(x, z))
@@ -53,10 +55,13 @@ world first.
 | `func get_environment_director() -> Node` | single writer for sky/sun/fog |
 | `func get_day_night_cycle() -> Node` | clock, keyframes, sun direction |
 | `func get_weather_system() -> Node` | seeded weather state machine |
-| `func get_interior_pois() -> Array[Dictionary]` | POIs with enterable interiors |
+| `func get_interior_pois() -> Array[Dictionary]` | POIs with enterable interiors (15 on the base 24-POI layout, 16 on the world-test preset) |
 | `func get_spawn_points() -> Array[Vector3]` | 2 flat drop zones near map center |
 | `func get_exfil_points() -> Array[Dictionary]` | 3 entries `{position: Vector3, name: String}` |
-| `func get_pois() -> Array[Dictionary]` | 17 base POIs + 0–4 preset extras `{position, type, name, radius, interior, dungeon_anchor}` |
+| `func get_pois() -> Array[Dictionary]` | 24 base POIs (21 authored layout + 3 exfil) + 0–4 preset extras `{position, type, name, radius, pad_radius, interior, dungeon_anchor}` |
+| `func get_loot_props() -> Array[Dictionary]` | POI clutter anchors for LootCache: `{position: Vector3, kind: StringName, poi_index: int, poi_type: StringName}` |
+| `func get_clutter_piece_count() -> int` | total POI-local clutter MultiMesh instances (0 before generate) |
+| `func get_path_weight_at(world_xz: Vector2) -> float` | road/path weight (0 away from roads, higher on them) |
 | `func get_roadside_points() -> Array[Dictionary]` | 10–14 roadside outbuildings `{position, yaw, kind}` (presets raise the cap) |
 | `func get_nav_region() -> NavigationRegion3D` | null only if `bake_navigation == false` |
 | `func get_map_texture() -> Texture2D` | 256×256 tactical overlay, null before generate |
@@ -86,12 +91,14 @@ world first.
 
 ## POIs
 
-Without a preset there are 17 POIs (14 authored objectives + 3 exfil pads), each
-with a procedural modular structure and a flattened combat pad:
+Without a preset there are **24 base POIs**: 3 exfil pads plus **21 authored layout
+entries** built from **20 authored POI types** (13 original kits + 7 second-wave kits).
+Each has a procedural modular structure and a flattened combat pad:
 
 | type | count | notes |
 | --- | --- | --- |
-| `warden_outpost` | 1 | 60m landmark monolith, courtyard cover |
+| `exfil_pad` | 3 | landing pads — these ARE `get_exfil_points()` |
+| `warden_outpost` | 1 | landmark monolith, courtyard cover, watchtower |
 | `faction_camp` | 2 | hab, tents, watchtower, containers, barriers; the command hab is enterable |
 | `relay_spire` | 2 | 46m lattice + glowing signal rings |
 | `crash_site` | 1 | broken hull sections, debris, ember glow; the central hull is enterable |
@@ -103,23 +110,70 @@ with a procedural modular structure and a flattened combat pad:
 | `choir_post` | 1 | dish, lattice mast, signal pylon ring, enterable bunker |
 | `colony_ruins` | 1 | collapsed hab blocks, street slabs, broken tower, enterable hab |
 | `derelict_ship` | 1 | landed freighter with ramp, cargo bay, corridor, cockpit and engine room |
-| `exfil_pad` | 3 | landing pads — these ARE `get_exfil_points()` |
+| `foundry_hall` | 1 | two-storey smelter: catwalks, crucible, gantry crane; enterable |
+| `hab_cluster` | 1 | three domed hab modules around a courtyard; all three enterable |
+| `comms_array` | 1 | dish farm + equipment shed; enterable |
+| `fuel_depot` | 1 | tank farm + pump gantry; enterable |
+| `clinic_shelter` | 1 | field hospital with beds/med lockers; enterable |
+| `research_lab` | 1 | glass-domed lab wing + live server racks; enterable |
+| `water_works` | 1 | settling basins, elevated tanks, catwalks; enterable |
 
-Map presets append up to 4 extra objectives after the authored 14. Their kits
-cycle `faction_camp` → `relay_spire` → `ruin_field` → `derelict_ship`, they prefer
-the preset's `biome_index` biome, and they accept a tighter 195 m spacing plus
-relaxed ground flatness. Extra placement is best-effort (a crowded map may place
-fewer than `extra_pois`); all 14 authored POIs and the 3 exfil pads always land.
+Map presets append up to 4 extra objectives **after** the 21 authored layout entries.
+The extra kits cycle the 11 `EXTRA_POI_KINDS` (original camp/relay/ruin/freighter plus
+the new foundry/hab/comms/fuel/clinic/lab/water kits), they prefer the preset's
+`biome_index` biome, and they accept a tighter 195 m spacing plus relaxed ground
+flatness. Extra placement is best-effort (a crowded map may place fewer than
+`extra_pois`); all 21 authored POIs and the 3 exfil pads always land, so a run has at
+least 24 POIs and at most 28.
 
 Every POI root node is named `POI_<index>_<type>` and carries a
 `world_info` meta dictionary `{name, type, position, radius, yaw}`; enterable POIs
 also expose `InteriorSpawn_00..` markers and dungeon-capable POIs a
 `DungeonAnchor` marker. `get_pois()` surfaces them as `interior` (spawn positions)
-and `dungeon_anchor` (world position). Drop zones are `DropZone_00/01`, and
+and `dungeon_anchor` (world position); `pad_radius` is the flattened combat pad
+radius (mirrors `POISpecs.pad`). Drop zones are `DropZone_00/01`, and
 roadside roots are `Roadside_00..nn` with `{name, type: "roadside", position,
 radius, yaw}`. Objective/exfil marker gameplay can either consume the API
 dictionaries or attach marker nodes to those roots. Exfil positions are the pad
 centers (flat, collision-safe); beacon masts are visible from ~600m.
+
+## POI clutter and loot props
+
+`WorldScatter` adds a POI-local clutter pass: barrels, crates, pallets, cable spools
+and debris in **5 MultiMesh batches**, 20 pieces per POI at `scatter_density` 1.0
+(about **480 instances** on a 24-POI map; the world-test preset reports 598 across
+26 POIs). Clutter is seeded per POI and uses `get_path_weight_at()` to stay out of
+road lanes.
+
+About two clutter pieces per POI are recorded as **loot-prop anchors** and exposed
+through `get_loot_props()` (`{position: Vector3, kind: StringName, poi_index: int,
+poi_type: StringName}`); the world-test preset yields **52 anchors**. Deployment puts
+a `LootCache` on a capped subset of them (about 10 per run) and resolves the table
+from `poi_type` through `POISpecs.loot_tier`, so rare POIs pay better.
+
+## POISpecs
+
+`features/world/poi_specs.gd` (`class_name POISpecs`) is a static, thread-safe
+**20-row data table** — no scene tree, no nodes, no RNG state, safe to call from
+worker threads and tests. Consumers (loot tables, `VehicleSites`, the Codex, the
+tactical map) read it instead of hard-coding kit names.
+
+| Member | Notes |
+| --- | --- |
+| `TYPE_IDS: Array[StringName]` | the 20 canonical POI type ids |
+| `VEHICLES: Array[StringName]` | `""`, `rig`, `hoverbike`, `airplane`, `spaceship`, `horse` |
+| `HAZARDS: Array[StringName]` | `none`, `hostile`, `ember`, `electrical`, `toxic`, `flood`, `radiation`, `vacuum`, `unstable` |
+| `static func all() -> Array[Dictionary]` | every spec, deep-copied |
+| `static func has_spec(type) -> bool` | type exists in the table |
+| `static func get_spec(type) -> Dictionary` | spec for `type`, `{}` when unknown |
+| `static func validate() -> Array[String]` | human-readable problems; empty = valid |
+
+Each spec row carries `id`, `title`, `blurb`, `radius`, `pad`, `interior`, `loot_tier`
+(0–4), `garrison`, `hazard`, `biomes`, `vehicle`, `map_bias` and `codex_icon`.
+`validate()` cross-checks count/uniqueness, radius/pad sanity, loot-tier and garrison
+ranges, hazard/vehicle vocabularies, biome indices and `TYPE_IDS` coverage; the world
+suite asserts it is empty and that every `POI_LAYOUT`/`EXTRA_POI_KINDS` type has a
+spec whose radius/pad mirror the layout.
 
 Roadside outbuildings are placed along the road polylines, offset 9–15 m to
 alternating sides, rejected near POIs/spawns, and finalized with collision +
@@ -147,7 +201,7 @@ print(world.get_map_preset_id())       # &"ashen_shelf"; &"" without a preset
 | `map_size` | `float` | optional; defaults to 1800 |
 | `scatter_density` | `float` | scatter multiplier (default 1.0) |
 | `roadside_target` | `int` | max roadside outbuildings (default 14) |
-| `extra_pois` | `int` | extra objectives appended after the authored 14 |
+| `extra_pois` | `int` | extra objectives appended after the 21 authored layout entries (max 4) |
 | `extra_poi_names` | `Array[String]` | names for the extras, in order; missing entries get fallback names |
 | `biome_index` | `int` | 0 / 1 / 2; extra POIs prefer this planet-remapped biome |
 | `biome_rotation` | `float` | radians; rotates the three biome anchors around the origin (0.0 = authored geography) |
@@ -166,9 +220,10 @@ toward the sun), `sun_energy`, `fog_density`, `volumetric_fog_density`
 accepted by `world_environment.gd::setup(parent, overrides, planet)`.
 
 With an empty preset (never calling `apply_preset`, or `apply_preset({})`) the
-builder reproduces the default frontier: 17 POIs, 10–14 roadside buildings,
-`scatter_density` 1.0, no biome rotation, the default sky, no fluid basins and no
-weather pool (the day/night cycle still runs with palette defaults).
+builder reproduces the default frontier: 24 base POIs (21 authored + 3 exfil),
+10–14 roadside buildings, `scatter_density` 1.0, no biome rotation, the default sky,
+no fluid basins and no weather pool (the day/night cycle still runs with palette
+defaults).
 
 ## Planets
 
@@ -235,11 +290,14 @@ water drag and lava damage; scatter skips fluid cells and dresses the shoreline.
 
 ## Interiors
 
-Several POIs are hollow: the faction-camp command hab, Vault bunker, crash hull,
-colony hab, Choir bunker, Ashen command hall and the derelict freighter. Doorways
-are 4.2 m wide and ceilings are 3.4 m+ so the 1.3 m-radius navmesh agent can path
-inside. Interiors carry `InteriorSpawn_00..` markers (loot/garrison anchors) and
-dungeon-capable POIs a `DungeonAnchor`; both are surfaced through `get_pois()`.
+**15 POIs** are hollow on the base 24-POI layout (14 interior types, with faction_camp appearing twice):
+the faction-camp command habs, Vault bunker, crash hull, colony hab, Choir bunker, Ashen command hall, the
+derelict freighter, and the seven second-wave kits (Foundry Hall, Habitation Cluster's three modules, Comms
+Array, Fuel Depot, Field Clinic, Research Lab and Water Works). The world-test preset reports **16** because
+its extra POI is a faction camp, and four preset extras can reach **17**. Doorways are 4.2 m wide and ceilings are
+3.4 m+ so the 1.3 m-radius navmesh agent can path inside. Interiors carry
+`InteriorSpawn_00..` markers (loot/garrison anchors) and dungeon-capable POIs a
+`DungeonAnchor`; both are surfaced through `get_pois()`/`get_interior_pois()`.
 The derelict ship is a full freighter kit with a boarding ramp, cargo bay,
 corridor, cockpit and engine room.
 
@@ -269,14 +327,14 @@ Pixel (0,0) is world `(-map_size/2, -map_size/2)`, and pixel y increases with
 world +z. The HUD minimap therefore draws north (`-z`) up and uses the same
 mapping for the crop, full map and edge-clamped markers.
 
-## Performance (measured, seed 12345)
+## Performance (measured, seed 12345, Verdant Verge preset)
 
-- Headless generation: ~1.25 s total (landforms 0.21s, pads/roads/map ~0.37s,
-  terrain 64 chunks on threads, structures/scatter/env + roadside ~0.5s,
-  nav bake ~0.19s).
+- Headless generation: **1,365 ms** total (phase A 134 ms, phase B 393 ms, terrain
+  64 chunks on threads, structures/scatter/clutter/env + roadside, **nav bake 245 ms**).
 - Windowed (renderer active): ~2–4 s wall (frame-based waits + shader compile).
-- 64 terrain chunks / 204,800 triangles, ~380 nodes, ~10 scatter MultiMesh
-  batches (~5k instances), one merged collision body for scatter.
+- 64 terrain chunks / 204,800 triangles, **656 nodes**, **17 scatter MultiMesh
+  batches (6,449 instances) + 5 POI-clutter batches (598 instances)**,
+  one merged collision body for scatter, 3,252 navmesh polygons.
 - Avoid per-frame noise sampling: all fields are baked at generation time;
   `sample_height` is a bilinear lookup.
 
@@ -286,12 +344,14 @@ mapping for the crop, full map and edge-clamped markers.
   tactical map image) run in a `Thread` with plain Packed data only.
 - Terrain chunk vertex data is generated by N `Thread`s (one batch per thread),
   then ArrayMesh/collision nodes are created on the main thread.
-- No SceneTree/RenderingServer calls happen off the main thread.
+- No SceneTree/RenderingServer calls happen off the main thread. `POISpecs` is
+  static pure data, so worker/loot code can read it without touching the tree.
 
 ## Self-test / preview
 
 ```bash
-# Headless contract test (asserts 16 POIs, roadside, 3 exfils, terrain/nav/map)
+# Headless contract test (20 POI types, >=24 base POIs, 16 interiors, POI clutter,
+# loot-prop anchors, POISpecs validation, fluids, nav, terrain, determinism replay)
 godot --headless --path D:\godotGa\game res://features/world/world_test.tscn
 
 # Interactive preview (free camera: WASD/QE, Shift, F12 screenshot)

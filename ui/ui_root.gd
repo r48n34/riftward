@@ -21,6 +21,7 @@ const PAUSE_PATH := "res://ui/screens/pause.gd"
 const RESULTS_PATH := "res://ui/screens/results.gd"
 const INVENTORY_PATH := "res://ui/screens/inventory_overlay.gd"
 const HUD_PATH := "res://ui/hud/hud_root.gd"
+const CINEMATIC_PATH := "res://ui/screens/cinematic_overlay.gd"
 
 const MENU_SCREENS: Array[StringName] = [
 	&"main_menu", &"quick_deploy", &"hub", &"loadout", &"locker", &"skills", &"squad", &"outpost", &"codex", &"settings"
@@ -40,6 +41,7 @@ var _loading: Node = null
 var _pause: Node = null
 var _results: Node = null
 var _inventory: Control = null
+var _cinematic: Control = null
 var _hud: Control = null
 var _hud_hidden_by_inventory := false
 var _toast_count := 0
@@ -210,6 +212,68 @@ func hide_inventory() -> void:
 
 func get_inventory_overlay() -> Control:
 	return _inventory
+
+
+# ---------------------------------------------------------------------------
+# Cinematics and rideables. App owns the lifecycle state; this shell only hosts
+# the overlay and forwards HUD updates, so a missing optional script is a clean
+# "not available" rather than an error.
+# ---------------------------------------------------------------------------
+
+func show_cinematic(cutscene_id: StringName, opts: Dictionary = {}) -> bool:
+	_ensure_cinematic()
+	if _cinematic == null or not is_instance_valid(_cinematic) or not _cinematic.has_method("play"):
+		return false
+	_cinematic.visible = true
+	var started: Variant = _cinematic.call("play", cutscene_id, opts)
+	if started != true:
+		_cinematic.visible = false
+		return false
+	return true
+
+
+func hide_cinematic() -> void:
+	if _cinematic == null or not is_instance_valid(_cinematic):
+		return
+	# dismiss() is the silent teardown: it must NOT emit finished, or App would
+	# re-enter its own finish handler. Older builds only expose skip().
+	if _cinematic.has_method("dismiss"):
+		_cinematic.call("dismiss")
+	elif _cinematic.has_method("skip"):
+		_cinematic.call("skip")
+	_cinematic.visible = false
+
+
+func get_cinematic_overlay() -> Control:
+	return _cinematic
+
+
+func is_cinematic_playing() -> bool:
+	if _cinematic == null or not is_instance_valid(_cinematic) or not _cinematic.visible:
+		return false
+	if not _cinematic.has_method("is_playing"):
+		return false
+	return bool(_cinematic.call("is_playing"))
+
+
+func set_hud_cinematic(active: bool) -> void:
+	if _hud != null and is_instance_valid(_hud) and _hud.has_method("set_cinematic_mode"):
+		_hud.call("set_cinematic_mode", active)
+
+
+func show_vehicle(snapshot: Dictionary) -> void:
+	if _hud != null and is_instance_valid(_hud) and _hud.has_method("show_vehicle"):
+		_hud.call("show_vehicle", snapshot)
+
+
+func update_vehicle(snapshot: Dictionary) -> void:
+	if _hud != null and is_instance_valid(_hud) and _hud.has_method("update_vehicle"):
+		_hud.call("update_vehicle", snapshot)
+
+
+func hide_vehicle() -> void:
+	if _hud != null and is_instance_valid(_hud) and _hud.has_method("hide_vehicle"):
+		_hud.call("hide_vehicle")
 
 
 func show_pause(paused: bool) -> void:
@@ -383,12 +447,38 @@ func _ensure_inventory() -> void:
 		_inventory.visible = false
 
 
+func _ensure_cinematic() -> void:
+	if _cinematic != null and is_instance_valid(_cinematic):
+		return
+	if not ResourceLoader.exists(CINEMATIC_PATH):
+		return
+	_cinematic = _spawn_overlay(CINEMATIC_PATH) as Control
+	if _cinematic == null:
+		return
+	_cinematic.process_mode = Node.PROCESS_MODE_ALWAYS
+	# STOP (not IGNORE): a running cinematic owns the pointer. Children such as
+	# the skip button are hit-tested before their parent, so they still work.
+	_cinematic.mouse_filter = Control.MOUSE_FILTER_STOP
+	_cinematic.z_index = 30
+	_cinematic.visible = false
+	if _cinematic.has_signal("finished"):
+		_cinematic.connect("finished", _on_cinematic_overlay_finished)
+
+
+func _on_cinematic_overlay_finished(cutscene_id: StringName) -> void:
+	if App != null and App.has_method("notify_cinematic_finished"):
+		App.call("notify_cinematic_finished", cutscene_id)
+	if _cinematic != null and is_instance_valid(_cinematic):
+		_cinematic.visible = false
+
+
 func _spawn_overlay(path: String) -> Node:
 	if not ResourceLoader.exists(path):
 		push_warning("[UIRoot] Overlay missing: %s" % path)
 		return null
 	var script: Script = load(path)
-	if script == null:
+	if script == null or not script.can_instantiate():
+		push_warning("[UIRoot] Overlay script unavailable: %s" % path)
 		return null
 	var node = script.new()
 	if not (node is Control):

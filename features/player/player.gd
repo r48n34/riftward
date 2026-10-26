@@ -85,6 +85,15 @@ var _fluid_move_mult: float = 1.0
 var _hazard_tick: float = 0.0
 var _headlamp: OmniLight3D = null
 var _lamp_timer: float = 0.0
+## Cinematic input lock: gameplay input is dropped but physics and vitals keep
+## ticking, so a cut-scene never freezes the world it is looking at.
+var _input_locked: bool = false
+## Active rideable seat. The player is parented to the vehicle seat while riding;
+## combat and the on-foot collider are restored on dismount.
+var _rideable: Node = null
+var _ride_return_parent: Node = null
+var _ride_just_mounted: bool = false
+var _ride_teardown: bool = false
 
 
 func _ready() -> void:
@@ -106,7 +115,7 @@ func _ready() -> void:
 
 func _build_body() -> void:
 	collision_layer = 2
-	collision_mask = 1 | 128
+	collision_mask = 1 | 128 | 1024
 	floor_max_angle = deg_to_rad(46.0)
 	floor_snap_length = 0.45
 	_capsule = CapsuleShape3D.new()
@@ -219,7 +228,7 @@ func _apply_profile_cosmetics() -> void:
 # ---------------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if is_dead or is_downed:
+	if is_dead or is_downed or _input_locked:
 		return
 	if Input.get_mouse_mode() != Input.MOUSE_MODE_CAPTURED:
 		return
@@ -236,14 +245,31 @@ func _unhandled_input(event: InputEvent) -> void:
 			y = -y
 		pitch = clampf(pitch - y, -MOUSE_CLAMP, MOUSE_CLAMP)
 		head.rotation.x = pitch
-		rotation.y = yaw
+		# While riding, yaw is a camera offset relative to the vehicle hull and
+		# is applied in _update_ride() instead of here.
+		if not is_riding():
+			rotation.y = yaw
 
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
+		if is_riding():
+			_forced_exit_ride()
 		return
 	if is_downed:
+		if is_riding():
+			_forced_exit_ride()
 		_update_downed(delta)
+		return
+	if is_riding():
+		_update_ride(delta)
+		return
+	if _input_locked:
+		# Cinematics only take input away: vitals, timers and the HUD keep
+		# running so the world behind the shot stays alive.
+		_update_timers(delta)
+		_update_headlamp(delta)
+		_update_hud_accumulator(delta)
 		return
 	_update_fluid_state(delta)
 	_update_headlamp(delta)
@@ -252,6 +278,7 @@ func _physics_process(delta: float) -> void:
 	_update_movement(delta)
 	_update_interaction(delta)
 	_try_interact()
+	_try_summon_ride()
 	_try_exfil_call()
 	_update_aim_fov(delta)
 	_update_hud_accumulator(delta)
@@ -833,6 +860,174 @@ func _on_hit_confirmed(killed: bool, crit: bool) -> void:
 	hitmarker.emit(killed, crit)
 	if killed:
 		add_trauma(0.18)
+
+
+# ---------------------------------------------------------------------------
+# Rideables and cinematic input lock
+# ---------------------------------------------------------------------------
+
+## Cinematics take every input away from gameplay without pausing the tree.
+func set_input_locked(locked: bool) -> void:
+	if _input_locked == locked:
+		return
+	_input_locked = locked
+	if locked:
+		velocity = Vector3.ZERO
+
+
+func is_input_locked() -> bool:
+	return _input_locked
+
+
+func is_riding() -> bool:
+	return _rideable != null and is_instance_valid(_rideable)
+
+
+func get_rideable() -> Node:
+	return _rideable if is_riding() else null
+
+
+## Seats the player on a rideable. Seating, collision suppression and the parent
+## swap belong to the vehicle (Rideable.mount); this side drops combat control
+## and resets the look. Interact is handled by the ride input path, dismount by
+## _update_ride(), so mounting mid-physics stays safe.
+func enter_vehicle(vehicle: Node) -> bool:
+	if vehicle == null or not is_instance_valid(vehicle):
+		return false
+	if not (vehicle is Node3D):
+		return false
+	if is_riding() or is_dead or is_downed:
+		return false
+	_ride_return_parent = get_parent()
+	_rideable = vehicle
+	_ride_just_mounted = true
+	_ride_teardown = false
+	velocity = Vector3.ZERO
+	yaw = 0.0
+	pitch = 0.0
+	head.rotation.x = 0.0
+	_set_combat_enabled(false)
+	# A wrecked or externally dismounted vehicle must release the player even if
+	# the player never pressed dismount.
+	if vehicle.has_signal("dismounted") and not vehicle.is_connected("dismounted", _on_ride_dismounted):
+		vehicle.connect("dismounted", _on_ride_dismounted)
+	if vehicle.has_method("mount"):
+		var mounted: Variant = vehicle.call("mount", self)
+		if mounted is bool and mounted == false:
+			_rideable = null
+			_set_combat_enabled(true)
+			return false
+	if EventBus != null and EventBus.has_signal("vehicle_mounted"):
+		EventBus.vehicle_mounted.emit(vehicle, _vehicle_id(vehicle))
+	return true
+
+
+## Releases the seat. The vehicle restores the parent and the exit position; this
+## only restores combat and the on-foot collider. Never calls back into a
+## vehicle that already considers itself empty, so a forced dismount is safe.
+func exit_vehicle(_exit_position: Vector3 = Vector3.ZERO) -> void:
+	if _rideable == null:
+		return
+	var vehicle := _rideable
+	_ride_teardown = true
+	_rideable = null
+	if vehicle != null and is_instance_valid(vehicle):
+		if vehicle.has_signal("dismounted") and vehicle.is_connected("dismounted", _on_ride_dismounted):
+			vehicle.disconnect("dismounted", _on_ride_dismounted)
+		if vehicle.has_method("is_occupied") and bool(vehicle.call("is_occupied")) and vehicle.has_method("dismount"):
+			vehicle.call("dismount", false)
+	_restore_on_foot_state()
+	_ride_teardown = false
+	if EventBus != null and EventBus.has_signal("vehicle_dismounted"):
+		EventBus.vehicle_dismounted.emit(vehicle, _vehicle_id(vehicle))
+
+
+## The vehicle released the seat itself (wreck, forced eject, teardown).
+func _on_ride_dismounted(rider: Node, _forced: bool) -> void:
+	if _ride_teardown or rider != self or not is_riding():
+		return
+	_forced_exit_ride()
+
+
+## KEY_T: whistle the nearest mount that exposes the horse whistle API. Machines
+## are placed in the world rather than summoned, so this stays a steed call.
+func _try_summon_ride() -> void:
+	if not Input.is_action_just_pressed("summon_ride") or is_riding():
+		return
+	var best: Node = null
+	var best_distance := INF
+	for node in get_tree().get_nodes_in_group("rideable"):
+		if node == null or not is_instance_valid(node) or not (node is Node3D):
+			continue
+		if not node.has_method("whistle"):
+			continue
+		var distance := (node as Node3D).global_position.distance_squared_to(global_position)
+		if distance < best_distance:
+			best_distance = distance
+			best = node
+	if best == null:
+		return
+	best.call("whistle", self)
+
+
+func _vehicle_id(vehicle: Node) -> StringName:
+	if vehicle == null or not is_instance_valid(vehicle) or not vehicle.has_method("get_vehicle_id"):
+		return &""
+	return StringName(vehicle.call("get_vehicle_id"))
+
+
+func _restore_on_foot_state() -> void:
+	_set_combat_enabled(true)
+	_ride_just_mounted = false
+	if _collision != null:
+		_collision.set_deferred("disabled", false)
+	set_deferred("collision_layer", 2)
+	set_deferred("collision_mask", 1 | 128 | 1024)
+	velocity = Vector3.ZERO
+	pitch = 0.0
+	head.rotation.x = 0.0
+	yaw = rotation.y
+	if _ride_return_parent != null and is_instance_valid(_ride_return_parent) and get_parent() != _ride_return_parent:
+		reparent(_ride_return_parent, true)
+	_ride_return_parent = null
+
+
+## Called when the vehicle vanishes under the player (destroyed, freed, scene
+## swap). Same restore path, no messages back to a dead vehicle.
+func _forced_exit_ride() -> void:
+	_rideable = null
+	_restore_on_foot_state()
+
+
+func _set_combat_enabled(value: bool) -> void:
+	if weapon_controller != null and is_instance_valid(weapon_controller) and weapon_controller.has_method("set_enabled"):
+		weapon_controller.call("set_enabled", value)
+	if ability_manager != null and is_instance_valid(ability_manager) and ability_manager is Node:
+		(ability_manager as Node).set_physics_process(value)
+		(ability_manager as Node).set_process(value)
+
+
+func _update_ride(delta: float) -> void:
+	if _rideable == null or not is_instance_valid(_rideable) or not (_rideable is Node3D):
+		_forced_exit_ride()
+		return
+	if _ride_just_mounted:
+		_ride_just_mounted = false
+		position = Vector3.ZERO
+	# The player is parented to the seat: a local yaw is the whole camera job.
+	rotation = Vector3(0.0, yaw, 0.0)
+	head.rotation.x = pitch
+	velocity = Vector3.ZERO
+	_update_fluid_state(delta)
+	_update_headlamp(delta)
+	_update_timers(delta)
+	_update_hud_accumulator(delta)
+	if _input_locked:
+		return
+	if Input.is_action_just_pressed("interact"):
+		# Dismount has to travel through the player so `_rideable` is cleared;
+		# calling the vehicle directly would leave the player in riding state.
+		exit_vehicle()
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,153 @@
+{
+    "schema":  1,
+    "pack_id":  "kenney_prototype_textures",
+    "title":  "Kenney Prototype Textures",
+    "author":  "Kenney (kenney.nl)",
+    "uploader":  "Calinou",
+    "asset_library":  {
+                          "id":  781,
+                          "version":  "1.0.2",
+                          "api_url":  "https://godotengine.org/asset-library/api/asset/781",
+                          "page_url":  "https://godotengine.org/asset-library/asset/781",
+                          "listed_license":  "CC0",
+                          "listed_download_status":  "ok",
+                          "listed_download_url":  "https://codeload.github.com/Calinou/kenney-prototype-textures/zip/db6622fbe90621eed70a0b417ae8d97281f45e6c",
+                          "fetched_download_url":  "https://codeload.github.com/Calinou/kenney-prototype-textures/zip/db6622fbe90621eed70a0b417ae8d97281f45e6c"
+                      },
+    "source_kind":  "github-archive",
+    "source_url":  "https://codeload.github.com/Calinou/kenney-prototype-textures/zip/db6622fbe90621eed70a0b417ae8d97281f45e6c",
+    "commit":  "db6622fbe90621eed70a0b417ae8d97281f45e6c",
+    "archive_sha256":  "18b30f5375f7500786c1b091d542a2e557fa91f4dd0324dec31e7f67dfa963b8",
+    "archive_bytes":  168479,
+    "license":  "CC0-1.0",
+    "license_file":  "res://assets/cc0/kenney_prototype_textures/LICENSE.txt",
+    "license_copies":  [
+                           "res://assets/textures/prototype/LICENSE.txt"
+                       ],
+    "curated_root":  "res://assets/textures/prototype",
+    "file_count":  20,
+    "total_bytes":  83769,
+    "generated_by":  "tools/fetch_asset_packs.ps1",
+    "files":  [
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_01.png",
+                      "bytes":  2004,
+                      "sha256":  "60a6f0a0b5e597962b399c39a31116f92f6a4564f087fcd2c6c2db4fc7cc2d4d",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_02.png",
+                      "bytes":  1333,
+                      "sha256":  "c1031088472a5b0fd515d9e1438cebe9924f7d8dcf4beecd8be444961ada3370",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_03.png",
+                      "bytes":  1954,
+                      "sha256":  "830f1c808c7786a51e158878e7de3fbb81563b33e191813d58c45f5c6da2a16c",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_04.png",
+                      "bytes":  7015,
+                      "sha256":  "9b56fcbead5b3709c29df79f17a70b0c46d69187d27bfccbeac6e940a3827090",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_04.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_05.png",
+                      "bytes":  8833,
+                      "sha256":  "21af37abfca38156725b1bbdd9ea529ca9b3c63e859efc05449707c75966a043",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_05.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_06.png",
+                      "bytes":  2092,
+                      "sha256":  "2d980790a6c956a374cefd759a67d528e183afb631027ebb1fffdebb31d6e1a3",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_06.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_07.png",
+                      "bytes":  1912,
+                      "sha256":  "0e96c5434260dfc0163321ab20bdc32e86a62414302ffa823c6114c6a2ee943e",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_07.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_08.png",
+                      "bytes":  635,
+                      "sha256":  "ab80f2fd0209fb879d372c45b1fd895ee737497a299fa6be3269c328ec290f68",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_08.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_09.png",
+                      "bytes":  2039,
+                      "sha256":  "46e1233f862fb4da9e7ab6821bb5614f5574bfc39d3199606628b91f05f82e1d",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_09.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_10.png",
+                      "bytes":  6154,
+                      "sha256":  "84b467f3e135ea8230167d79d2c0a6be2795de257e1eeae095528e94ec3d1082",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_10.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_11.png",
+                      "bytes":  6051,
+                      "sha256":  "d965ceab2c2f4ee98e6849207016e2b7fbdd9a85ea5b4130acfbcc911a0d0105",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_11.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_12.png",
+                      "bytes":  6411,
+                      "sha256":  "7b05f2a01ba7e8ee1ef8652b4422eb1dd2187eab0bfafafcb34b840bb6efb16a",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_12.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/dark/texture_13.png",
+                      "bytes":  6635,
+                      "sha256":  "9b1f482f45f00baef9c991912e14052cfccfae0a847409c94b32cf5081428318",
+                      "source":  "addons/kenney_prototype_textures/dark/texture_13.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/light/texture_01.png",
+                      "bytes":  1333,
+                      "sha256":  "4aae886c87b41c48c69683428b7043ea2ddb30101bd3cd7cebe16ef774741ee0",
+                      "source":  "addons/kenney_prototype_textures/light/texture_01.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/light/texture_02.png",
+                      "bytes":  1954,
+                      "sha256":  "42faf3cb8f2169e2c60a7957d47b1b98109abca72f9c95e6ebd9617dcba08430",
+                      "source":  "addons/kenney_prototype_textures/light/texture_02.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/light/texture_03.png",
+                      "bytes":  7015,
+                      "sha256":  "f4bd31987e85d8ef6f12e8f92a3cce3bd3921d30f7e0e907e45938b5dd7a61fa",
+                      "source":  "addons/kenney_prototype_textures/light/texture_03.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/light/texture_04.png",
+                      "bytes":  7498,
+                      "sha256":  "af3ed6a6e1376f5a266e9823cdf7821b598730896dc5d3b5ebd58f86ca353a26",
+                      "source":  "addons/kenney_prototype_textures/light/texture_04.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/light/texture_07.png",
+                      "bytes":  635,
+                      "sha256":  "1c1dd4fd069508277a902b209d2cc1366f07ad751b586dd5d8c1b489458c05d3",
+                      "source":  "addons/kenney_prototype_textures/light/texture_07.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/light/texture_09.png",
+                      "bytes":  6072,
+                      "sha256":  "2156b8eae883b97921591bb5277dd9aa2b26d0972278a4edc426a2c66dbb79f1",
+                      "source":  "addons/kenney_prototype_textures/light/texture_09.png"
+                  },
+                  {
+                      "path":  "res://assets/textures/prototype/light/texture_12.png",
+                      "bytes":  6194,
+                      "sha256":  "0e156b16cda47ecc5f24307090eb944ffe56a0d7a19b8651ae354f9a2c5ac5d3",
+                      "source":  "addons/kenney_prototype_textures/light/texture_12.png"
+                  }
+              ]
+}
