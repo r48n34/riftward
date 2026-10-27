@@ -32,3 +32,4 @@ desktop.ini
 
 # Agent team session state (local only)
 .agent-teams/
+/tools
